@@ -184,21 +184,6 @@ SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
                            bool normalize_input,
                            const char* input_id_images_path);
 
-SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
-                           sd_image_t init_image,
-                           int width,
-                           int height,
-                           int video_frames,
-                           int motion_bucket_id,
-                           int fps,
-                           float augmentation_level,
-                           float min_cfg,
-                           float cfg_scale,
-                           enum sample_method_t sample_method,
-                           int sample_steps,
-                           float strength,
-                           int64_t seed);
-
 typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
