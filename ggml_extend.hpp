@@ -23,6 +23,7 @@
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml.h"
+#include "ggml-cpu.h"
 
 #ifdef SD_USE_CUBLAS
 #include "ggml-cuda.h"
@@ -34,6 +35,10 @@
 
 #ifdef SD_USE_VULKAN
 #include "ggml-vulkan.h"
+#endif
+
+#ifdef SD_USE_CANN
+#include "ggml-cann.h"
 #endif
 
 #ifdef SD_USE_SYCL
@@ -48,13 +53,6 @@
 #ifndef __STATIC_INLINE__
 #define __STATIC_INLINE__ static inline
 #endif
-
-__STATIC_INLINE__ void ggml_log_callback_default(ggml_log_level level, const char* text, void* user_data) {
-    (void)level;
-    (void)user_data;
-    fputs(text, stderr);
-    fflush(stderr);
-}
 
 __STATIC_INLINE__ void ggml_tensor_set_f32_randn(struct ggml_tensor* tensor, std::shared_ptr<RNG> rng) {
     uint32_t n                        = (uint32_t)ggml_nelements(tensor);
@@ -96,25 +94,6 @@ __STATIC_INLINE__ int ggml_tensor_get_i32(const ggml_tensor* tensor, int l, int 
 __STATIC_INLINE__ ggml_fp16_t ggml_tensor_get_f16(const ggml_tensor* tensor, int l, int k = 0, int j = 0, int i = 0) {
     GGML_ASSERT(tensor->nb[0] == sizeof(ggml_fp16_t));
     return *(ggml_fp16_t*)((char*)(tensor->data) + i * tensor->nb[3] + j * tensor->nb[2] + k * tensor->nb[1] + l * tensor->nb[0]);
-}
-
-static struct ggml_tensor* get_tensor_from_graph(struct ggml_cgraph* gf, const char* name) {
-    struct ggml_tensor* res = NULL;
-    for (int i = 0; i < gf->n_nodes; i++) {
-        // printf("%d, %s \n", i, gf->nodes[i]->name);
-        if (strcmp(ggml_get_name(gf->nodes[i]), name) == 0) {
-            res = gf->nodes[i];
-            break;
-        }
-    }
-    for (int i = 0; i < gf->n_leafs; i++) {
-        // printf("%d, %s \n", i, gf->leafs[i]->name);
-        if (strcmp(ggml_get_name(gf->leafs[i]), name) == 0) {
-            res = gf->leafs[i];
-            break;
-        }
-    }
-    return res;
 }
 
 __STATIC_INLINE__ void print_ggml_tensor(struct ggml_tensor* tensor, bool shape_only = false, const char* mark = "") {
@@ -675,7 +654,7 @@ __STATIC_INLINE__ struct ggml_tensor* ggml_nn_attention(struct ggml_context* ctx
                                                         struct ggml_tensor* k,
                                                         struct ggml_tensor* v,
                                                         bool mask = false) {
-#if defined(SD_USE_FLASH_ATTENTION) && !defined(SD_USE_CUBLAS) && !defined(SD_USE_METAL) && !defined(SD_USE_VULKAN) && !defined(SD_USE_SYCL)
+#if defined(SD_USE_FLASH_ATTENTION) && !defined(SD_USE_CUBLAS) && !defined(SD_USE_METAL) && !defined(SD_USE_VULKAN) && !defined(SD_USE_CANN) && !defined(SD_USE_SYCL)
     struct ggml_tensor* kqv = ggml_flash_attn(ctx, q, k, v, false);  // [N * n_head, n_token, d_head]
 #else
     float d_head = (float)q->ne[0];
@@ -1107,18 +1086,13 @@ public:
             ggml_backend_cpu_set_n_threads(backend, n_threads);
         }
 
-#ifdef SD_USE_METAL
-        if (ggml_backend_is_metal(backend)) {
-            ggml_backend_metal_set_n_cb(backend, n_threads);
-        }
-#endif
         ggml_backend_graph_compute(backend, gf);
 
 #ifdef GGML_PERF
         ggml_graph_print(gf);
 #endif
         if (output != NULL) {
-            auto result = gf->nodes[gf->n_nodes - 1];
+            auto result = ggml_graph_node(gf, ggml_graph_n_nodes(gf) -1);
             if (*output == NULL && output_ctx != NULL) {
                 *output = ggml_dup_tensor(output_ctx, result);
             }
