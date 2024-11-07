@@ -30,8 +30,17 @@ extern "C" {
 
 enum rng_type_t {
     STD_DEFAULT_RNG,
-    CUDA_RNG
+    CUDA_RNG,
+    N_RNG_TYPES
 };
+
+static const char* rng_types_argument_str[] = {
+    "std_default",
+    "cuda",
+};
+
+SD_API rng_type_t sd_argument_to_rng_type(const char* str);
+SD_API const char* sd_rng_type_to_argument(rng_type_t rng_type);
 
 enum sample_method_t {
     EULER_A,
@@ -47,6 +56,22 @@ enum sample_method_t {
     N_SAMPLE_METHODS
 };
 
+static const char* sample_methods_argument_str[] = {
+    "euler_a",
+    "euler",
+    "heun",
+    "dpm2",
+    "dpm++2s_a",
+    "dpm++2m",
+    "dpm++2mv2",
+    "ipndm",
+    "ipndm_v",
+    "lcm",
+};
+
+SD_API sample_method_t sd_argument_to_sample_method(const char* str);
+SD_API const char* sd_sample_method_to_argument(sample_method_t sample_method);
+
 enum schedule_t {
     DEFAULT,
     DISCRETE,
@@ -56,6 +81,18 @@ enum schedule_t {
     GITS,
     N_SCHEDULES
 };
+
+static const char* schedulers_argument_str[] = {
+    "default",
+    "discrete",
+    "karras",
+    "exponential",
+    "ays",
+    "gits",
+};
+
+SD_API schedule_t sd_argument_to_schedule(const char* str);
+SD_API const char* sd_schedule_to_argument(schedule_t schedule);
 
 // same as enum ggml_type
 enum sd_type_t {

@@ -1,4 +1,4 @@
-set(TARGET sd)
+set(TARGET stable-diffusion-cli)
 
 add_executable(${TARGET} main.cpp)
 install(TARGETS ${TARGET} RUNTIME)
