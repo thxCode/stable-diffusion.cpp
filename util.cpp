@@ -248,18 +248,6 @@ std::u32string unicode_value_to_utf32(int unicode_value) {
     return utf32_string;
 }
 
-static std::string sd_basename(const std::string& path) {
-    size_t pos = path.find_last_of('/');
-    if (pos != std::string::npos) {
-        return path.substr(pos + 1);
-    }
-    pos = path.find_last_of('\\');
-    if (pos != std::string::npos) {
-        return path.substr(pos + 1);
-    }
-    return path;
-}
-
 std::string path_join(const std::string& p1, const std::string& p2) {
     if (p1.empty()) {
         return p2;
@@ -274,6 +262,30 @@ std::string path_join(const std::string& p1, const std::string& p2) {
     }
 
     return p1 + "/" + p2;
+}
+
+std::string path_dirname(const std::string& path) {
+    size_t pos = path.find_last_of('/');
+    if (pos != std::string::npos) {
+        return path.substr(0, pos);
+    }
+    pos = path.find_last_of('\\');
+    if (pos != std::string::npos) {
+        return path.substr(0, pos);
+    }
+    return path;
+}
+
+std::string path_basename(const std::string& path) {
+    size_t pos = path.find_last_of('/');
+    if (pos != std::string::npos) {
+        return path.substr(pos + 1);
+    }
+    pos = path.find_last_of('\\');
+    if (pos != std::string::npos) {
+        return path.substr(pos + 1);
+    }
+    return path;
 }
 
 sd_image_t* preprocess_id_image(sd_image_t* img) {
@@ -367,7 +379,7 @@ void log_printf(sd_log_level_t level, const char* file, int line, const char* fo
     va_start(args, format);
 
     static char log_buffer[LOG_BUFFER_SIZE + 1];
-    int written = snprintf(log_buffer, LOG_BUFFER_SIZE, "%s:%-4d - ", sd_basename(file).c_str(), line);
+    int written = snprintf(log_buffer, LOG_BUFFER_SIZE, "%s:%-4d - ", path_basename(file).c_str(), line);
 
     if (written >= 0 && written < LOG_BUFFER_SIZE) {
         vsnprintf(log_buffer + written, LOG_BUFFER_SIZE - written, format, args);
@@ -381,11 +393,11 @@ void log_printf(sd_log_level_t level, const char* file, int line, const char* fo
     va_end(args);
 }
 
-void sd_set_log_callback(sd_log_cb_t cb, void* data) {
+void sd_log_set(sd_log_cb_t cb, void* data) {
     sd_log_cb      = cb;
     sd_log_cb_data = data;
 }
-void sd_set_progress_callback(sd_progress_cb_t cb, void* data) {
+void sd_progress_set(sd_progress_cb_t cb, void* data) {
     sd_progress_cb      = cb;
     sd_progress_cb_data = data;
 }
@@ -409,10 +421,6 @@ const char* sd_get_system_info() {
     ss << "    VSX = " << ggml_cpu_has_vsx() << std::endl;
     snprintf(buffer, sizeof(buffer), "%s", ss.str().c_str());
     return buffer;
-}
-
-const char* sd_type_name(enum sd_type_t type) {
-    return ggml_type_name((ggml_type)type);
 }
 
 sd_image_f32_t sd_image_t_to_sd_image_f32_t(sd_image_t image) {

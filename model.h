@@ -20,7 +20,8 @@
 enum SDVersion {
     VERSION_SD1,
     VERSION_SD2,
-    VERSION_SDXL,
+    VERSION_SDXL_BASE,
+    VERSION_SDXL_REFINER,
     VERSION_SVD,
     VERSION_SD3_2B,
     VERSION_FLUX_DEV,
@@ -141,13 +142,14 @@ protected:
                         size_t file_index,
                         const std::string& prefix);
 
-    bool init_from_gguf_file(const std::string& file_path, const std::string& prefix = "");
-    bool init_from_safetensors_file(const std::string& file_path, const std::string& prefix = "");
-    bool init_from_ckpt_file(const std::string& file_path, const std::string& prefix = "");
     bool init_from_diffusers_file(const std::string& file_path, const std::string& prefix = "");
 
 public:
     bool init_from_file(const std::string& file_path, const std::string& prefix = "");
+    bool init_from_gguf_file(const std::string& file_path, const std::string& prefix = "");
+    bool init_from_safetensors_file(const std::string& file_path, const std::string& prefix = "");
+    bool init_from_safetensors_file(const std::string& dir_path, const std::string& file_prefix, ggml_type type, const std::string& prefix = "");
+    bool init_from_ckpt_file(const std::string& file_path, const std::string& prefix = "");
     SDVersion get_sd_version();
     ggml_type get_sd_wtype();
     ggml_type get_conditioner_wtype();
@@ -157,13 +159,14 @@ public:
     bool load_tensors(std::map<std::string, struct ggml_tensor*>& tensors,
                       ggml_backend_t backend,
                       std::set<std::string> ignore_tensors = {});
-    bool save_to_gguf_file(const std::string& file_path, ggml_type type);
+    bool save_to_gguf_file(const std::string& file_path, ggml_type outtype, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_outtype = GGML_TYPE_COUNT);
     bool tensor_should_be_converted(const TensorStorage& tensor_storage, ggml_type type);
-    int64_t get_params_mem_size(ggml_backend_t backend, ggml_type type = GGML_TYPE_COUNT);
+    int64_t get_params_mem_size(ggml_backend_t backend, ggml_type outtype = GGML_TYPE_COUNT, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_outtype = GGML_TYPE_COUNT);
     ~ModelLoader() = default;
 
     static std::string load_merges();
     static std::string load_t5_tokenizer_json();
+    bool has_prefix_tensors(const std::string& prefix);
 };
 
 #endif  // __MODEL_H__

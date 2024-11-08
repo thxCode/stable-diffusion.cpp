@@ -23,14 +23,14 @@ protected:
     std::vector<int> attention_resolutions = {4, 2, 1};
     std::vector<int> channel_mult          = {1, 2, 4, 4};
     std::vector<int> transformer_depth     = {1, 1, 1, 1};
-    int time_embed_dim                     = 1280;  // model_channels*4
+    int time_embed_dim                     = 1280;  // model_channels*4, 1536 for VERSION_SDXL_REFINER
     int num_heads                          = 8;
     int num_head_channels                  = -1;   // channels // num_heads
-    int context_dim                        = 768;  // 1024 for VERSION_SD2, 2048 for VERSION_SDXL
+    int context_dim                        = 768;  // 1024 for VERSION_SD2, 2048 for VERSION_SDXL_BASE, 1280 for VERSION_SDXL_REFINER
 
 public:
-    int model_channels  = 320;
-    int adm_in_channels = 2816;  // only for VERSION_SDXL
+    int model_channels  = 320;   // 384 for VERSION_SDXL_REFINER
+    int adm_in_channels = 2816;  // 2816 for VERSION_SDXL_BASE/SVD, 2560 for VERSION_SDXL_REFINER
 
     ControlNetBlock(SDVersion version = VERSION_SD1)
         : version(version) {
@@ -38,8 +38,18 @@ public:
             context_dim       = 1024;
             num_head_channels = 64;
             num_heads         = -1;
-        } else if (version == VERSION_SDXL) {
+        } else if (version == VERSION_SDXL_BASE) {
             context_dim           = 2048;
+            attention_resolutions = {4, 2};
+            channel_mult          = {1, 2, 4};
+            transformer_depth     = {1, 2, 10};
+            num_head_channels     = 64;
+            num_heads             = -1;
+        } else if (version == VERSION_SDXL_REFINER) {
+            time_embed_dim        = 1536;
+            context_dim           = 1280;
+            model_channels        = 384;
+            adm_in_channels       = 2560;
             attention_resolutions = {4, 2};
             channel_mult          = {1, 2, 4};
             transformer_depth     = {1, 2, 10};
@@ -58,7 +68,7 @@ public:
         // time_embed_1 is nn.SiLU()
         blocks["time_embed.2"] = std::shared_ptr<GGMLBlock>(new Linear(time_embed_dim, time_embed_dim));
 
-        if (version == VERSION_SDXL || version == VERSION_SVD) {
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER || version == VERSION_SVD) {
             blocks["label_emb.0.0"] = std::shared_ptr<GGMLBlock>(new Linear(adm_in_channels, time_embed_dim));
             // label_emb_1 is nn.SiLU()
             blocks["label_emb.0.2"] = std::shared_ptr<GGMLBlock>(new Linear(time_embed_dim, time_embed_dim));

@@ -63,7 +63,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         : version(version), tokenizer(version == VERSION_SD2 ? 0 : 49407), embd_dir(embd_dir), wtype(wtype) {
         if (clip_skip <= 0) {
             clip_skip = 1;
-            if (version == VERSION_SD2 || version == VERSION_SDXL) {
+            if (version == VERSION_SD2 || version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
                 clip_skip = 2;
             }
         }
@@ -71,43 +71,56 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
             text_model = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip);
         } else if (version == VERSION_SD2) {
             text_model = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_H_14, clip_skip);
-        } else if (version == VERSION_SDXL) {
+        } else if (version == VERSION_SDXL_BASE) {
             text_model  = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip, false);
+            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+        } else if (version == VERSION_SDXL_REFINER) {
             text_model2 = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         }
     }
 
     void set_clip_skip(int clip_skip) {
-        text_model->set_clip_skip(clip_skip);
-        if (version == VERSION_SDXL) {
+        if (version != VERSION_SDXL_REFINER) {
+            text_model->set_clip_skip(clip_skip);
+        }
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             text_model2->set_clip_skip(clip_skip);
         }
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
-        if (version == VERSION_SDXL) {
+        if (version != VERSION_SDXL_REFINER) {
+            text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+        }
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             text_model2->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
         }
     }
 
     void alloc_params_buffer() {
-        text_model->alloc_params_buffer();
-        if (version == VERSION_SDXL) {
+        if (version != VERSION_SDXL_REFINER) {
+            text_model->alloc_params_buffer();
+        }
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             text_model2->alloc_params_buffer();
         }
     }
 
     void free_params_buffer() {
-        text_model->free_params_buffer();
-        if (version == VERSION_SDXL) {
+        if (version != VERSION_SDXL_REFINER) {
+            text_model->free_params_buffer();
+        }
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             text_model2->free_params_buffer();
         }
     }
 
     size_t get_params_buffer_size() {
-        size_t buffer_size = text_model->get_params_buffer_size();
-        if (version == VERSION_SDXL) {
+        size_t buffer_size = 0;
+        if (version != VERSION_SDXL_REFINER) {
+            buffer_size = text_model->get_params_buffer_size();
+        }
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             buffer_size += text_model2->get_params_buffer_size();
         }
         return buffer_size;
@@ -398,7 +411,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
             auto input_ids                 = vector_to_ggml_tensor_i32(work_ctx, chunk_tokens);
             struct ggml_tensor* input_ids2 = NULL;
             size_t max_token_idx           = 0;
-            if (version == VERSION_SDXL) {
+            if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
                 auto it = std::find(chunk_tokens.begin(), chunk_tokens.end(), tokenizer.EOS_TOKEN_ID);
                 if (it != chunk_tokens.end()) {
                     std::fill(std::next(it), chunk_tokens.end(), 0);
@@ -415,15 +428,17 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
             }
 
             {
-                text_model->compute(n_threads,
-                                    input_ids,
-                                    num_custom_embeddings,
-                                    token_embed_custom.data(),
-                                    max_token_idx,
-                                    false,
-                                    &chunk_hidden_states1,
-                                    work_ctx);
-                if (version == VERSION_SDXL) {
+                if (version != VERSION_SDXL_REFINER) {
+                    text_model->compute(n_threads,
+                                        input_ids,
+                                        num_custom_embeddings,
+                                        token_embed_custom.data(),
+                                        max_token_idx,
+                                        false,
+                                        &chunk_hidden_states1,
+                                        work_ctx);
+                }
+                if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
                     text_model2->compute(n_threads,
                                          input_ids2,
                                          0,
@@ -482,7 +497,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                         ggml_nelements(hidden_states) / chunk_hidden_states->ne[0]);
 
         ggml_tensor* vec = NULL;
-        if (version == VERSION_SDXL) {
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             int out_dim = 256;
             vec         = ggml_new_tensor_1d(work_ctx, GGML_TYPE_F32, adm_in_channels);
             // [0:1280]
@@ -623,6 +638,7 @@ struct FrozenCLIPVisionEmbedder : public GGMLRunner {
 
 struct SD3CLIPEmbedder : public Conditioner {
     ggml_type wtype;
+    bool compvis_compatiblity;
     CLIPTokenizer clip_l_tokenizer;
     CLIPTokenizer clip_g_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
@@ -632,8 +648,9 @@ struct SD3CLIPEmbedder : public Conditioner {
 
     SD3CLIPEmbedder(ggml_backend_t backend,
                     ggml_type wtype,
-                    int clip_skip = -1)
-        : wtype(wtype), clip_g_tokenizer(0) {
+                    bool compvis_compatiblity = false,
+                    int clip_skip             = -1)
+        : wtype(wtype), compvis_compatiblity(compvis_compatiblity), clip_g_tokenizer(0) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
@@ -648,6 +665,12 @@ struct SD3CLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
+        if (compvis_compatiblity) {
+            clip_l->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+            clip_g->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
+            t5->get_param_tensors(tensors, "cond_stage_model.2.transformer");
+            return;
+        }
         clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
         clip_g->get_param_tensors(tensors, "text_encoders.clip_g.transformer.text_model");
         t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");

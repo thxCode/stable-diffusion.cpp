@@ -56,7 +56,7 @@ rng_type_t sd_argument_to_rng_type(const char* str) {
             return (rng_type_t)r;
         }
     }
-    return STD_DEFAULT_RNG;
+    return N_RNG_TYPES;
 }
 
 const char* sd_rng_type_to_argument(rng_type_t rng_type) {
@@ -69,7 +69,7 @@ sample_method_t sd_argument_to_sample_method(const char* str) {
             return (sample_method_t)m;
         }
     }
-    return EULER_A;
+    return N_SAMPLE_METHODS;
 }
 
 const char* sd_sample_method_to_argument(sample_method_t sample_method) {
@@ -82,7 +82,7 @@ schedule_t sd_argument_to_schedule(const char* str) {
             return (schedule_t)d;
         }
     }
-    return DEFAULT;
+    return N_SCHEDULES;
 }
 
 const char* sd_schedule_to_argument(schedule_t schedule) {
@@ -302,10 +302,6 @@ public:
             vae_wtype             = wtype;
         }
 
-        if (version == VERSION_SDXL) {
-            vae_wtype = GGML_TYPE_F32;
-        }
-
         LOG_INFO("Weight type:                 %s", ggml_type_name(model_wtype));
         LOG_INFO("Conditioner weight type:     %s", ggml_type_name(conditioner_wtype));
         LOG_INFO("Diffusion model weight type: %s", ggml_type_name(diffusion_model_wtype));
@@ -313,15 +309,8 @@ public:
 
         LOG_DEBUG("ggml tensor size = %d bytes", (int)sizeof(ggml_tensor));
 
-        if (version == VERSION_SDXL) {
+        if (version == VERSION_SDXL_BASE || version == VERSION_SDXL_REFINER) {
             scale_factor = 0.13025f;
-            if (vae_path.size() == 0 && taesd_path.size() == 0) {
-                LOG_WARN(
-                    "!!!It looks like you are using SDXL model. "
-                    "If you find that the generated images are completely black, "
-                    "try specifying SDXL VAE FP16 Fix with the --vae parameter. "
-                    "You can find it here: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors");
-            }
         } else if (version == VERSION_SD3_2B || version == VERSION_SD3_5_8B) {
             scale_factor = 1.5305f;
         } else if (version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
@@ -348,7 +337,7 @@ public:
             if (version == VERSION_SD3_2B || version == VERSION_SD3_5_8B || version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
                 use_t5xxl = true;
             }
-            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != GGML_TYPE_F32) {
+            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype < GGML_TYPE_F16) {
                 clip_on_cpu = true;
                 LOG_INFO("set clip_on_cpu to true");
             }
@@ -357,7 +346,7 @@ public:
                 clip_backend = ggml_backend_cpu_init();
             }
             if (version == VERSION_SD3_2B || version == VERSION_SD3_5_8B) {
-                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype);
+                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype, model_loader.has_prefix_tensors("cond_stage_model."));
                 diffusion_model  = std::make_shared<MMDiTModel>(backend, diffusion_model_wtype, version);
             } else if (version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
                 cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype);
@@ -1064,7 +1053,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool vae_tiling,
                      bool free_params_immediately,
                      int n_threads,
-                     enum sd_type_t wtype,
+                     enum ggml_type wtype,
                      enum rng_type_t rng_type,
                      enum schedule_t s,
                      bool keep_clip_on_cpu,
@@ -1286,7 +1275,7 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
     SDCondition uncond;
     if (cfg_scale != 1.0) {
         bool force_zero_embeddings = false;
-        if (sd_ctx->sd->version == VERSION_SDXL && negative_prompt.size() == 0) {
+        if ((sd_ctx->sd->version == VERSION_SDXL_BASE || sd_ctx->sd->version == VERSION_SDXL_REFINER) && negative_prompt.size() == 0) {
             force_zero_embeddings = true;
         }
         uncond = sd_ctx->sd->cond_stage_model->get_learned_condition(work_ctx,
