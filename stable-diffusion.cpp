@@ -193,11 +193,12 @@ public:
                         schedule_t schedule,
                         bool clip_on_cpu,
                         bool control_net_cpu,
-                        bool vae_on_cpu) {
+                        bool vae_on_cpu,
+                        int main_gpu) {
         use_tiny_autoencoder = taesd_path.size() > 0;
 #ifdef SD_USE_CUBLAS
         LOG_DEBUG("Using CUDA backend");
-        backend = ggml_backend_cuda_init(0);
+        backend = ggml_backend_cuda_init(main_gpu);
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
@@ -205,11 +206,11 @@ public:
 #endif
 #ifdef SD_USE_CANN
         LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(0);
+        backend = ggml_backend_cann_init(main_gpu);
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
 #endif
 
         if (!backend) {
@@ -1058,7 +1059,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      enum schedule_t s,
                      bool keep_clip_on_cpu,
                      bool keep_control_net_cpu,
-                     bool keep_vae_on_cpu) {
+                     bool keep_vae_on_cpu,
+                     int main_gpu) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
         return NULL;
@@ -1080,9 +1082,6 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                          free_params_immediately,
                                          lora_model_dir,
                                          rng_type);
-    if (sd_ctx->sd == NULL) {
-        return NULL;
-    }
 
     if (!sd_ctx->sd->load_from_file(model_path,
                                     clip_l_path,
@@ -1099,7 +1098,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     s,
                                     keep_clip_on_cpu,
                                     keep_control_net_cpu,
-                                    keep_vae_on_cpu)) {
+                                    keep_vae_on_cpu,
+                                    main_gpu)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
         free(sd_ctx);
@@ -1108,7 +1108,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
     return sd_ctx;
 }
 
-void free_sd_ctx(sd_ctx_t* sd_ctx) {
+void sd_ctx_free(sd_ctx_t* sd_ctx) {
     if (sd_ctx->sd != NULL) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;

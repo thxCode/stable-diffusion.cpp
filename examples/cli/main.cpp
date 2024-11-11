@@ -829,7 +829,7 @@ int main(int argc, const char* argv[]) {
 
     if (results == NULL) {
         printf("generate failed\n");
-        free_sd_ctx(sd_ctx);
+        sd_ctx_free(sd_ctx);
         return 1;
     }
 
@@ -875,7 +875,7 @@ int main(int argc, const char* argv[]) {
         results[i].data = NULL;
     }
     free(results);
-    free_sd_ctx(sd_ctx);
+    sd_ctx_free(sd_ctx);
     free(control_image_buffer);
     free(input_image_buffer);
 
