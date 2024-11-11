@@ -202,8 +202,8 @@ public:
             model_channels        = 384;
             adm_in_channels       = 2560;
             attention_resolutions = {4, 2};
-            channel_mult          = {1, 2, 4};
-            transformer_depth     = {1, 2, 10};
+            channel_mult          = {1, 2, 4, 4};
+            transformer_depth     = {4, 4, 4, 4};
             num_head_channels     = 64;
             num_heads             = -1;
         } else if (version == VERSION_SVD) {
