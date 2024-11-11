@@ -109,6 +109,7 @@ SD_API void sd_log_set(sd_log_cb_t sd_log_cb, void* data);
 SD_API void sd_progress_set(sd_progress_cb_t cb, void* data);
 SD_API int32_t get_num_physical_cores();
 SD_API const char* sd_get_system_info();
+SD_API ggml_log_level sd_log_level_to_ggml_log_level(sd_log_level_t level);
 
 typedef struct {
     uint32_t width;

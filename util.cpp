@@ -423,6 +423,19 @@ const char* sd_get_system_info() {
     return buffer;
 }
 
+ggml_log_level sd_log_level_to_ggml_log_level(sd_log_level_t level) {
+    switch (level) {
+        case SD_LOG_INFO:
+            return GGML_LOG_LEVEL_INFO;
+        case SD_LOG_WARN:
+            return GGML_LOG_LEVEL_WARN;
+        case SD_LOG_ERROR:
+            return GGML_LOG_LEVEL_ERROR;
+        default:
+            return GGML_LOG_LEVEL_DEBUG;
+    }
+}
+
 sd_image_f32_t sd_image_t_to_sd_image_f32_t(sd_image_t image) {
     sd_image_f32_t converted_image;
     converted_image.width   = image.width;
