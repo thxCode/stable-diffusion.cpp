@@ -1491,23 +1491,28 @@ bool ModelLoader::init_from_ckpt_file(const std::string& file_path, const std::s
 }
 
 SDVersion ModelLoader::get_sd_version() {
-    bool is_flux      = false;
-    bool is_sd3       = false;
-    bool is_sdxl      = false;
-    bool is_sdxl_base = false;
-    bool is_sd2       = false;
-    bool is_sd1       = false;
+    bool is_flux         = false;
+    bool is_sd3          = false;
+    bool is_sd3_5_medium = false;
+    bool is_sdxl         = false;
+    bool is_sdxl_base    = false;
+    bool is_sd2          = false;
+    bool is_sd1          = false;
+
     for (auto& tensor_storage : tensor_storages) {
         if (tensor_storage.name.find("joint_blocks.37.x_block.attn.ln_q.weight") != std::string::npos) {
-            return VERSION_SD3_5_8B;
+            return VERSION_SD3_5_LARGE;
         }
-        if (tensor_storage.name.find("model.diffusion_model.joint_blocks.23.") != std::string::npos) {
+        if (tensor_storage.name.find("joint_blocks.23.") != std::string::npos) {
             is_sd3 = true;
+            if (ends_with(tensor_storage.name, "joint_blocks.23.x_block.attn.ln_k.weight")) {
+                is_sd3_5_medium = true;
+            }
         }
-        if (tensor_storage.name.find("model.diffusion_model.guidance_in.in_layer.weight") != std::string::npos) {
+        if (tensor_storage.name.find("guidance_in.in_layer.weight") != std::string::npos) {
             return VERSION_FLUX_DEV;
         }
-        if (tensor_storage.name.find("model.diffusion_model.double_blocks.") != std::string::npos) {
+        if (tensor_storage.name.find("double_blocks.") != std::string::npos) {
             is_flux = true;
         }
         if (tensor_storage.name == "conditioner.embedders.0.model.token_embedding.weight" ||
@@ -1539,14 +1544,17 @@ SDVersion ModelLoader::get_sd_version() {
     if (is_flux) {
         return VERSION_FLUX_SCHNELL;
     }
+    if (is_sd3_5_medium) {
+        return VERSION_SD3_5_MEDIUM;
+    }
     if (is_sd3) {
-        return VERSION_SD3_2B;
+        return VERSION_SD3_MEDIUM;
     }
     if (is_sdxl && !is_sdxl_base) {
         return VERSION_SDXL_REFINER;
     }
     if (is_sdxl) {
-        return VERSION_SDXL_BASE;
+        return VERSION_SDXL;
     }
     if (is_sd2) {
         return VERSION_SD2;

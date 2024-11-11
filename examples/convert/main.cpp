@@ -489,9 +489,14 @@ int main(int argc, char** argv) {
         auto transformer_config = load_json(transformer_config_path);
         auto num_layers         = transformer_config.at("num_layers").get<int>();
         if (num_layers == 38) {
-            ver = VERSION_SD3_5_8B;
+            ver = VERSION_SD3_5_LARGE;
         } else {
-            ver = VERSION_SD3_2B;
+            auto pos_embed_max_size = transformer_config.at("pos_embed_max_size").get<int>();
+            if (pos_embed_max_size == 384) {
+                ver = VERSION_SD3_5_LARGE;
+            } else {
+                ver = VERSION_SD3_MEDIUM;
+            }
         }
     } else if (class_name == "FluxPipeline") {
         auto text_encoder_config_path = path_join(params.model_path, "text_encoder/config.json");
@@ -507,7 +512,7 @@ int main(int argc, char** argv) {
             ver = VERSION_FLUX_SCHNELL;
         }
     } else if (class_name == "StableDiffusionXLPipeline" || class_name == "StableDiffusionXLImg2ImgPipeline") {
-        ver = VERSION_SDXL_BASE;
+        ver = VERSION_SDXL;
     } else if (class_name == "StableDiffusionPipeline") {
         auto text_encoder_config_path = path_join(params.model_path, "text_encoder/config.json");
         if (!file_exists(text_encoder_config_path)) {
@@ -529,13 +534,14 @@ int main(int argc, char** argv) {
     }
 
     switch (ver) {
-        case VERSION_SD3_5_8B:
-        case VERSION_SD3_2B:
+        case VERSION_SD3_5_LARGE:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_MEDIUM:
             return convert_sd3(params, ver);
         case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
             return convert_flux(params, ver);
-        case VERSION_SDXL_BASE:
+        case VERSION_SDXL:
         case VERSION_SDXL_REFINER:
             return convert_sdxl(params, ver);
         case VERSION_SD2:

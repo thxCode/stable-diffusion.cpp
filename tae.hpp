@@ -191,7 +191,7 @@ struct TinyAutoEncoder : public GGMLRunner {
                     ggml_type wtype,
                     bool decoder_only = true)
         : decode_only(decoder_only),
-          taesd(decode_only),
+          taesd(decoder_only),
           GGMLRunner(backend, wtype) {
         taesd.init(params_ctx, wtype);
     }

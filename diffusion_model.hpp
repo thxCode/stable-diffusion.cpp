@@ -80,7 +80,7 @@ struct MMDiTModel : public DiffusionModel {
 
     MMDiTModel(ggml_backend_t backend,
                ggml_type wtype,
-               SDVersion version = VERSION_SD3_2B)
+               SDVersion version = VERSION_SD3_MEDIUM)
         : mmdit(backend, wtype, version) {
     }
 
