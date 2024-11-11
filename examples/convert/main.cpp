@@ -244,7 +244,7 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
         loaded = loader.init_from_safetensors_file(params.model_path, "transformer/diffusion_pytorch_model", params.output_type, "transformer.");
     } else {
         ignore_vae = true;
-        loaded = loader.init_from_file(params.diffusion_model_file_path);
+        loaded     = loader.init_from_file(params.diffusion_model_file_path);
     }
     if (!loaded) {
         LOG_ERROR("Failed to load transformer model");
@@ -309,7 +309,7 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
         }
     } else {
         ignore_vae = true;
-        loaded = loader.init_from_file(params.diffusion_model_file_path);
+        loaded     = loader.init_from_file(params.diffusion_model_file_path);
     }
     if (!loaded) {
         LOG_ERROR("Failed to load transformer model");
@@ -360,7 +360,7 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
         loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
     } else {
         ignore_vae = true;
-        loaded = loader.init_from_file(params.diffusion_model_file_path);
+        loaded     = loader.init_from_file(params.diffusion_model_file_path);
     }
     if (!loaded) {
         LOG_ERROR("Failed to load unet model");
@@ -413,7 +413,7 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
         loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
     } else {
         ignore_vae = true;
-        loaded = loader.init_from_file(params.diffusion_model_file_path);
+        loaded     = loader.init_from_file(params.diffusion_model_file_path);
     }
     if (!loaded) {
         LOG_ERROR("Failed to load unet model");
@@ -542,9 +542,7 @@ int main(int argc, char** argv) {
         case VERSION_SD1:
             return convert_sd(params, ver);
         default:
-            break;
+            LOG_ERROR("Unsupported model version");
+            return 1;
     }
-
-    LOG_ERROR("Unsupported model version");
-    return 1;
 }
