@@ -251,7 +251,7 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    if (!ignore_vae) {
+    if (!ignore_vae || !params.vae_model_file_path.empty()) {
         if (params.vae_model_file_path.empty()) {
             loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
         } else {
@@ -316,7 +316,7 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    if (!ignore_vae) {
+    if (!ignore_vae || !params.vae_model_file_path.empty()) {
         if (params.vae_model_file_path.empty()) {
             loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
         } else {
@@ -367,7 +367,7 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    if (!ignore_vae) {
+    if (!ignore_vae || !params.vae_model_file_path.empty()) {
         if (params.vae_model_file_path.empty()) {
             loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
         } else {
@@ -420,7 +420,7 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    if (!ignore_vae) {
+    if (!ignore_vae || !params.vae_model_file_path.empty()) {
         if (params.vae_model_file_path.empty()) {
             loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
         } else {
