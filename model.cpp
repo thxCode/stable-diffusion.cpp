@@ -1566,20 +1566,7 @@ SDVersion ModelLoader::get_sd_version() {
 }
 
 ggml_type ModelLoader::get_sd_wtype() {
-    for (auto& tensor_storage : tensor_storages) {
-        if (is_unused_tensor(tensor_storage.name)) {
-            continue;
-        }
-
-        if (ggml_is_quantized(tensor_storage.type)) {
-            return tensor_storage.type;
-        }
-
-        if (tensor_should_be_converted(tensor_storage, GGML_TYPE_Q4_K)) {
-            return tensor_storage.type;
-        }
-    }
-    return GGML_TYPE_COUNT;
+    return get_diffusion_model_wtype();
 }
 
 ggml_type ModelLoader::get_conditioner_wtype() {
@@ -1962,12 +1949,16 @@ bool ModelLoader::tensor_should_be_converted(const TensorStorage& tensor_storage
 }
 
 bool ModelLoader::save_to_gguf_file(const std::string& file_path, ggml_type outtype, ggml_type vae_outtype, ggml_type clip_outtype) {
-    if (vae_outtype == GGML_TYPE_COUNT) {
+    if (vae_outtype >= GGML_TYPE_COUNT) {
         vae_outtype = outtype;
     }
-    if (clip_outtype == GGML_TYPE_COUNT) {
+    if (clip_outtype >= GGML_TYPE_COUNT) {
         clip_outtype = outtype;
     }
+
+    LOG_INFO("save conditioner weight type: %s", ggml_type_name(clip_outtype));
+    LOG_INFO("save diffusion model weight type: %s", ggml_type_name(outtype));
+    LOG_INFO("save vae weight type: %s", ggml_type_name(vae_outtype));
 
     auto backend    = ggml_backend_cpu_init();
     size_t mem_size = 1 * 1024 * 1024;  // for padding

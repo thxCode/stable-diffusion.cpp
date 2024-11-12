@@ -139,7 +139,7 @@ static bool convert_params_parse(int argc, char** argv, convert_params& params) 
                 }
                 const char* outtype    = argv[i++];
                 params.vae_output_type = convert_str_to_ggml_type(outtype);
-                if (params.vae_output_type == GGML_TYPE_COUNT) {
+                if (params.vae_output_type >= GGML_TYPE_COUNT) {
                     invalid("--vae-outtype");
                 }
                 continue;
@@ -151,7 +151,7 @@ static bool convert_params_parse(int argc, char** argv, convert_params& params) 
                 }
                 const char* outtype     = argv[i++];
                 params.clip_output_type = convert_str_to_ggml_type(outtype);
-                if (params.clip_output_type == GGML_TYPE_COUNT) {
+                if (params.clip_output_type >= GGML_TYPE_COUNT) {
                     invalid("--clip-outtype");
                 }
                 continue;
@@ -163,7 +163,7 @@ static bool convert_params_parse(int argc, char** argv, convert_params& params) 
                 }
                 const char* outtype = argv[i++];
                 params.output_type  = convert_str_to_ggml_type(outtype);
-                if (params.output_type == GGML_TYPE_COUNT) {
+                if (params.output_type >= GGML_TYPE_COUNT) {
                     invalid("--outtype");
                 }
                 continue;

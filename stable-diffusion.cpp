@@ -283,7 +283,7 @@ public:
             model_wtype = model_loader.get_sd_wtype();
             if (model_wtype == GGML_TYPE_COUNT) {
                 model_wtype = GGML_TYPE_F32;
-                LOG_WARN("can not get mode wtype frome weight, use f32");
+                LOG_WARN("can not get mode wtype from weight, use f32");
             }
             conditioner_wtype = model_loader.get_conditioner_wtype();
             if (conditioner_wtype == GGML_TYPE_COUNT) {
