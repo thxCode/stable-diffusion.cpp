@@ -121,7 +121,7 @@ sd_image_t upscale(upscaler_ctx_t* upscaler_ctx, sd_image_t input_image, uint32_
     return upscaler_ctx->upscaler->upscale(input_image, upscale_factor);
 }
 
-void free_upscaler_ctx(upscaler_ctx_t* upscaler_ctx) {
+void upscaler_ctx_free(upscaler_ctx_t* upscaler_ctx) {
     if (upscaler_ctx->upscaler != NULL) {
         delete upscaler_ctx->upscaler;
         upscaler_ctx->upscaler = NULL;

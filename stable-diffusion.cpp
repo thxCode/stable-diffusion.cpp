@@ -313,21 +313,21 @@ public:
         LOG_DEBUG("ggml tensor size = %d bytes", (int)sizeof(ggml_tensor));
 
         switch (version) {
-        case VERSION_SDXL:
-        case VERSION_SDXL_REFINER:
-            scale_factor = 0.13025f;
-            break;
-        case VERSION_SD3_MEDIUM:
-        case VERSION_SD3_5_MEDIUM:
-        case VERSION_SD3_5_LARGE:
-            scale_factor = 1.5305f;
-            break;
-        case VERSION_FLUX_DEV:
-        case VERSION_FLUX_SCHNELL:
-            scale_factor = 0.3611;
-            break;
-        default:
-            break;
+            case VERSION_SDXL:
+            case VERSION_SDXL_REFINER:
+                scale_factor = 0.13025f;
+                break;
+            case VERSION_SD3_MEDIUM:
+            case VERSION_SD3_5_MEDIUM:
+            case VERSION_SD3_5_LARGE:
+                scale_factor = 1.5305f;
+                break;
+            case VERSION_FLUX_DEV:
+            case VERSION_FLUX_SCHNELL:
+                scale_factor = 0.3611;
+                break;
+            default:
+                break;
         }
 
         if (version == VERSION_SVD) {
@@ -984,17 +984,17 @@ public:
             C = 4;
         } else {
             switch (version) {
-            case VERSION_SD3_MEDIUM:
-            case VERSION_SD3_5_MEDIUM:
-            case VERSION_SD3_5_LARGE:
-                C = 32;
-                break;
-            case VERSION_FLUX_DEV:
-            case VERSION_FLUX_SCHNELL:
-                C = 32;
-                break;
-            default:
-                break;
+                case VERSION_SD3_MEDIUM:
+                case VERSION_SD3_5_MEDIUM:
+                case VERSION_SD3_5_LARGE:
+                    C = 32;
+                    break;
+                case VERSION_FLUX_DEV:
+                case VERSION_FLUX_SCHNELL:
+                    C = 32;
+                    break;
+                default:
+                    break;
             }
         }
         ggml_tensor* result = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32,
@@ -1324,17 +1324,17 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
     std::vector<struct ggml_tensor*> final_latents;  // collect latents to decode
     int C = 4;
     switch (sd_ctx->sd->version) {
-    case VERSION_SD3_MEDIUM:
-    case VERSION_SD3_5_MEDIUM:
-    case VERSION_SD3_5_LARGE:
-        C = 16;
-        break;
-    case VERSION_FLUX_DEV:
-    case VERSION_FLUX_SCHNELL:
-        C = 16;
-        break;
-    default:
-        break;
+        case VERSION_SD3_MEDIUM:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+            C = 16;
+            break;
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            C = 16;
+            break;
+        default:
+            break;
     }
     int W = width / 8;
     int H = height / 8;
@@ -1445,17 +1445,17 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
     struct ggml_init_params params;
     params.mem_size = static_cast<size_t>(10 * 1024 * 1024);  // 10 MB
     switch (sd_ctx->sd->version) {
-    case VERSION_SD3_MEDIUM:
-    case VERSION_SD3_5_MEDIUM:
-    case VERSION_SD3_5_LARGE:
-        params.mem_size *= 3;
-        break;
-    case VERSION_FLUX_DEV:
-    case VERSION_FLUX_SCHNELL:
-        params.mem_size *= 4;
-        break;
-    default:
-        break;
+        case VERSION_SD3_MEDIUM:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+            params.mem_size *= 3;
+            break;
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            params.mem_size *= 4;
+            break;
+        default:
+            break;
     }
     if (sd_ctx->sd->stacked_id) {
         params.mem_size += static_cast<size_t>(10 * 1024 * 1024);  // 10 MB
@@ -1562,17 +1562,17 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
     struct ggml_init_params params;
     params.mem_size = static_cast<size_t>(10 * 1024 * 1024);  // 10 MB
     switch (sd_ctx->sd->version) {
-    case VERSION_SD3_MEDIUM:
-    case VERSION_SD3_5_MEDIUM:
-    case VERSION_SD3_5_LARGE:
-        params.mem_size *= 2;
-        break;
-    case VERSION_FLUX_DEV:
-    case VERSION_FLUX_SCHNELL:
-        params.mem_size *= 3;
-        break;
-    default:
-        break;
+        case VERSION_SD3_MEDIUM:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+            params.mem_size *= 2;
+            break;
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            params.mem_size *= 3;
+            break;
+        default:
+            break;
     }
     if (sd_ctx->sd->stacked_id) {
         params.mem_size += static_cast<size_t>(10 * 1024 * 1024);  // 10 MB
@@ -1641,4 +1641,58 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
     LOG_INFO("img2img completed in %.2fs", (t1 - t0) * 1.0f / 1000);
 
     return result_images;
+}
+
+int sd_get_version(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return VERSION_COUNT;
+    }
+    return sd_ctx->sd->version;
+}
+
+sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return N_SAMPLE_METHODS;
+    }
+    switch (sd_ctx->sd->version) {
+        case VERSION_SD1:
+            return IPNDM;
+        case VERSION_SD2:
+            return EULER_A;
+        case VERSION_SDXL:
+        case VERSION_SDXL_REFINER:
+        case VERSION_SD3_MEDIUM:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            return EULER;
+        default:
+            return N_SAMPLE_METHODS;
+    }
+}
+
+float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return 1.0f;
+    }
+    switch (sd_ctx->sd->version) {
+        case VERSION_SD1:
+            return 7.0f;
+        case VERSION_SD2:
+            return 9.0f;
+        case VERSION_SDXL:
+        case VERSION_SDXL_REFINER:
+            return 7.5f;
+        case VERSION_SD3_MEDIUM:
+            return 5.0f;
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+            return 4.5f;
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            return 1.0f;
+        default:
+            return 1.0f;
+    }
 }
