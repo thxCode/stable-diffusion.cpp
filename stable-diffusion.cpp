@@ -361,7 +361,7 @@ public:
                 cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype, model_loader.has_prefix_tensors("cond_stage_model."));
                 diffusion_model  = std::make_shared<MMDiTModel>(backend, diffusion_model_wtype, version);
             } else if (version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
-                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype);
+                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype, model_loader.has_prefix_tensors("cond_stage_model."));
                 diffusion_model  = std::make_shared<FluxModel>(backend, diffusion_model_wtype, version);
             } else {
                 cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, conditioner_wtype, embeddings_path, version);

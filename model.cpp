@@ -88,6 +88,7 @@ const char* unused_tensors[] = {
     "text_model.embeddings.position_ids",
     "cond_stage_model.transformer.text_model.embeddings.position_ids",
     "cond_stage_model.transformer.text_model.text_projection",
+    "cond_stage_model.1.transformer.encoder.embed_tokens",
     "cond_stage_model.2.transformer.encoder.embed_tokens",
     "cond_stage_model.model.logit_scale",
     "cond_stage_model.model.text_projection",
@@ -327,6 +328,13 @@ std::string convert_diffusers_name_to_compvis(std::string key, char seq) {
         key += format("%c0", seq);
     }
 
+    // return directly
+    if (starts_with(key, format("cond_stage_model%c", seq)) ||
+        starts_with(key, format("first_stage_model%c", seq)) ||
+        starts_with(key, format("model%cdiffusion_model%c", seq, seq))) {
+        return key;
+    }
+
     // unet
     if (match(m, std::regex(format("unet%cconv_in(.*)", seq)), key)) {
         return format("model%cdiffusion_model%cinput_blocks%c0%c0", seq, seq, seq, seq) + m[0];
@@ -472,25 +480,27 @@ std::string convert_diffusers_name_to_compvis(std::string key, char seq) {
         return format("model%cdiffusion_model%ct_embedder%cmlp%c", seq, seq, seq, seq) + std::to_string(std::stoi(m[0]) * 2 - 2) + m[1];
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cnorm(\\d+)_context%clinear", seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer%c(\\d+)%cnorm(\\d+)_context%clinear", seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%ccontext_block%cadaLN_modulation%c%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, m[1].c_str());
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff_context%cnet%c(\\d+)%c", seq, seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer%ctransformer_blocks%c(\\d+)%cff_context%cnet%c(\\d+)%c", seq, seq, seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%ccontext_block%cmlp%cfc%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, std::to_string(std::stoi(m[1]) / 2 + 1).c_str());
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cnorm(\\d+)%clinear", seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer%ctransformer_blocks%c(\\d+)%cnorm(\\d+)%clinear", seq, seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%cx_block%cadaLN_modulation%c%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, m[1].c_str());
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff%cnet%c(\\d+)%c", seq, seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer%ctransformer_blocks%c(\\d+)%cff%cnet%c(\\d+)%c", seq, seq, seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%cx_block%cmlp%cfc%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, std::to_string(std::stoi(m[1]) / 2 + 1).c_str());
     }
 
     if (match(m, std::regex(format("transformer%ctransformer_blocks%c(.*)", seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c", seq, seq, seq) + m[0];
     }
+
+    // TODO: add more transformer conversion
 
     if (match(m, std::regex(format("transformer%c(.*)", seq)), key)) {
         if (m[0] == format("norm_out%clinear", seq)) {
@@ -2004,11 +2014,13 @@ bool ModelLoader::save_to_gguf_file(const std::string& file_path, ggml_type outt
     };
 
     bool success = load_tensors(on_new_tensor_cb, backend);
-    ggml_backend_free(backend);
-    LOG_INFO("load tensors done");
-    LOG_INFO("trying to save tensors to %s", file_path.c_str());
     if (success) {
+        LOG_INFO("load tensors done");
+        LOG_INFO("trying to save tensors to %s", file_path.c_str());
         gguf_write_to_file(gguf_ctx, file_path.c_str(), false);
+    } else {
+        LOG_ERROR("load tensors failed");
+        ggml_backend_free(backend);
     }
     ggml_free(ggml_ctx);
     gguf_free(gguf_ctx);

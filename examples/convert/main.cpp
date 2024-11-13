@@ -239,30 +239,6 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
     ModelLoader loader;
     bool loaded = false;
 
-    bool ignore_vae = false;
-    if (params.diffusion_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "transformer/diffusion_pytorch_model", params.output_type, "transformer.");
-    } else {
-        ignore_vae = true;
-        loaded     = loader.init_from_file(params.diffusion_model_file_path);
-    }
-    if (!loaded) {
-        LOG_ERROR("Failed to load transformer model");
-        return 1;
-    }
-
-    if (!ignore_vae || !params.vae_model_file_path.empty()) {
-        if (params.vae_model_file_path.empty()) {
-            loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
-        } else {
-            loaded = loader.init_from_file(params.vae_model_file_path, "vae.");
-        }
-        if (!loaded) {
-            LOG_ERROR("Failed to load vae model");
-            return 1;
-        }
-    }
-
     if (params.clip_l_model_file_path.empty()) {
         loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
     } else {
@@ -293,27 +269,9 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
-}
-
-int convert_flux(const convert_params& params, const SDVersion ver) {
-    ModelLoader loader;
-    bool loaded = false;
-
     bool ignore_vae = false;
-    if (params.diffusion_model_file_path.empty()) {
-        if (ver == VERSION_FLUX_DEV) {
-            loaded = loader.init_from_safetensors_file(params.model_path, "flux1-dev", params.output_type, "transformer.");
-        } else {
-            loaded = loader.init_from_safetensors_file(params.model_path, "flux1-schnell", params.output_type, "transformer.");
-        }
-    } else {
+    if (!params.diffusion_model_file_path.empty()) {
         ignore_vae = true;
-        loaded     = loader.init_from_file(params.diffusion_model_file_path);
-    }
-    if (!loaded) {
-        LOG_ERROR("Failed to load transformer model");
-        return 1;
     }
 
     if (!ignore_vae || !params.vae_model_file_path.empty()) {
@@ -327,6 +285,23 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
             return 1;
         }
     }
+
+    if (params.diffusion_model_file_path.empty()) {
+        loaded = loader.init_from_safetensors_file(params.model_path, "transformer/diffusion_pytorch_model", params.output_type, "transformer.");
+    } else {
+        loaded = loader.init_from_file(params.diffusion_model_file_path);
+    }
+    if (!loaded) {
+        LOG_ERROR("Failed to load transformer model");
+        return 1;
+    }
+
+    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+}
+
+int convert_flux(const convert_params& params, const SDVersion ver) {
+    ModelLoader loader;
+    bool loaded = false;
 
     if (params.clip_l_model_file_path.empty()) {
         loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
@@ -348,23 +323,9 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
-}
-
-int convert_sdxl(const convert_params& params, const SDVersion ver) {
-    ModelLoader loader;
-    bool loaded = false;
-
     bool ignore_vae = false;
-    if (params.diffusion_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
-    } else {
+    if (!params.diffusion_model_file_path.empty()) {
         ignore_vae = true;
-        loaded     = loader.init_from_file(params.diffusion_model_file_path);
-    }
-    if (!loaded) {
-        LOG_ERROR("Failed to load unet model");
-        return 1;
     }
 
     if (!ignore_vae || !params.vae_model_file_path.empty()) {
@@ -378,6 +339,27 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
             return 1;
         }
     }
+
+    if (params.diffusion_model_file_path.empty()) {
+        if (ver == VERSION_FLUX_DEV) {
+            loaded = loader.init_from_safetensors_file(params.model_path, "flux1-dev", params.output_type, "transformer.");
+        } else {
+            loaded = loader.init_from_safetensors_file(params.model_path, "flux1-schnell", params.output_type, "transformer.");
+        }
+    } else {
+        loaded = loader.init_from_file(params.diffusion_model_file_path, "model.diffusion_model.");
+    }
+    if (!loaded) {
+        LOG_ERROR("Failed to load transformer model");
+        return 1;
+    }
+
+    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+}
+
+int convert_sdxl(const convert_params& params, const SDVersion ver) {
+    ModelLoader loader;
+    bool loaded = false;
 
     if (params.clip_l_model_file_path.empty()) {
         if (is_directory(path_join(params.model_path, "text_encoder"))) {
@@ -401,23 +383,9 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
-}
-
-int convert_sd(const convert_params& params, const SDVersion ver) {
-    ModelLoader loader;
-    bool loaded = false;
-
     bool ignore_vae = false;
-    if (params.diffusion_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
-    } else {
+    if (!params.diffusion_model_file_path.empty()) {
         ignore_vae = true;
-        loaded     = loader.init_from_file(params.diffusion_model_file_path);
-    }
-    if (!loaded) {
-        LOG_ERROR("Failed to load unet model");
-        return 1;
     }
 
     if (!ignore_vae || !params.vae_model_file_path.empty()) {
@@ -432,6 +400,23 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
         }
     }
 
+    if (params.diffusion_model_file_path.empty()) {
+        loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
+    } else {
+        loaded = loader.init_from_file(params.diffusion_model_file_path);
+    }
+    if (!loaded) {
+        LOG_ERROR("Failed to load unet model");
+        return 1;
+    }
+
+    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+}
+
+int convert_sd(const convert_params& params, const SDVersion ver) {
+    ModelLoader loader;
+    bool loaded = false;
+
     if (params.clip_l_model_file_path.empty()) {
         loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
     } else {
@@ -439,6 +424,33 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
     }
     if (!loaded) {
         LOG_ERROR("Failed to load text encoder model");
+        return 1;
+    }
+
+    bool ignore_vae = false;
+    if (!params.diffusion_model_file_path.empty()) {
+        ignore_vae = true;
+    }
+
+    if (!ignore_vae || !params.vae_model_file_path.empty()) {
+        if (params.vae_model_file_path.empty()) {
+            loaded = loader.init_from_safetensors_file(params.model_path, "vae/diffusion_pytorch_model", params.vae_output_type, "vae.");
+        } else {
+            loaded = loader.init_from_file(params.vae_model_file_path, "vae.");
+        }
+        if (!loaded) {
+            LOG_ERROR("Failed to load vae model");
+            return 1;
+        }
+    }
+
+    if (params.diffusion_model_file_path.empty()) {
+        loaded = loader.init_from_safetensors_file(params.model_path, "unet/diffusion_pytorch_model", params.output_type, "unet.");
+    } else {
+        loaded = loader.init_from_file(params.diffusion_model_file_path);
+    }
+    if (!loaded) {
+        LOG_ERROR("Failed to load unet model");
         return 1;
     }
 
@@ -505,11 +517,13 @@ int main(int argc, char** argv) {
             return 1;
         }
         auto text_encoder_config = load_json(text_encoder_config_path);
-        auto guidance_embeds     = text_encoder_config.at("guidance_embeds").get<bool>();
-        if (guidance_embeds) {
-            ver = VERSION_FLUX_DEV;
+        ver                      = VERSION_FLUX_SCHNELL;
+        if (text_encoder_config.contains("guidance_embeds")) {
+            auto guidance_embeds = text_encoder_config.at("guidance_embeds").get<bool>();
+            if (guidance_embeds) {
+                ver = VERSION_FLUX_DEV;
+            }
         } else {
-            ver = VERSION_FLUX_SCHNELL;
         }
     } else if (class_name == "StableDiffusionXLPipeline" || class_name == "StableDiffusionXLImg2ImgPipeline") {
         ver = VERSION_SDXL;

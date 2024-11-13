@@ -127,4 +127,3 @@ target_compile_features(${SD_LIB} PUBLIC cxx_std_11)
 if (SD_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
-

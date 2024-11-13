@@ -1019,6 +1019,7 @@ struct SD3CLIPEmbedder : public Conditioner {
 
 struct FluxCLIPEmbedder : public Conditioner {
     ggml_type wtype;
+    bool compvis_compatiblity;
     CLIPTokenizer clip_l_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
     std::shared_ptr<CLIPTextModelRunner> clip_l;
@@ -1026,8 +1027,9 @@ struct FluxCLIPEmbedder : public Conditioner {
 
     FluxCLIPEmbedder(ggml_backend_t backend,
                      ggml_type wtype,
-                     int clip_skip = -1)
-        : wtype(wtype) {
+                     bool compvis_compatiblity = false,
+                     int clip_skip             = -1)
+        : wtype(wtype), compvis_compatiblity(compvis_compatiblity) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
@@ -1040,6 +1042,11 @@ struct FluxCLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
+        if (compvis_compatiblity) {
+            clip_l->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+            t5->get_param_tensors(tensors, "cond_stage_model.1.transformer");
+            return;
+        }
         clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
         t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
     }

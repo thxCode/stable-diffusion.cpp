@@ -1,0 +1,45 @@
+diff --git a/src/ggml.c b/src/ggml.c
+index bc03401..08d1678 100644
+--- a/src/ggml.c
++++ b/src/ggml.c
+@@ -8127,13 +8127,37 @@ void gguf_write_to_file(const struct gguf_context * ctx, const char * fname, boo
+         GGML_ABORT("failed to open file for writing");
+     }
+ 
++    // write meta data
+     struct gguf_buf buf = gguf_buf_init(16*1024);
++    gguf_write_to_buf(ctx, &buf, true);
++    fwrite(buf.data, 1, buf.offset, file);
++    gguf_buf_free(buf);
+ 
+-    gguf_write_to_buf(ctx, &buf, only_meta);
++    if (only_meta) {
++        fclose(file);
++        return;
++    }
+ 
+-    fwrite(buf.data, 1, buf.offset, file);
++    // write tensor data
++    size_t offset = 0;
++    for (uint32_t i = 0; i < ctx->header.n_tensors; ++i) {
++        struct gguf_tensor_info * info = &ctx->infos[i];
+ 
+-    gguf_buf_free(buf);
++        const size_t size     = info->size;
++        const size_t size_pad = GGML_PAD(size, ctx->alignment);
++
++        fwrite(info->data, 1, size, file);
++
++        if (size_pad != size) {
++            uint8_t pad = 0;
++            for (size_t j = 0; j < size_pad - size; ++j) {
++                fwrite(&pad, 1, sizeof(pad), file);
++            }
++        }
++
++        GGML_ASSERT(offset == info->offset);
++        offset += size_pad;
++    }
+ 
+     fclose(file);
+ }
