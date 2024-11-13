@@ -1656,7 +1656,6 @@ sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx) {
     }
     switch (sd_ctx->sd->version) {
         case VERSION_SD1:
-            return IPNDM;
         case VERSION_SD2:
             return EULER_A;
         case VERSION_SDXL:
@@ -1672,13 +1671,33 @@ sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx) {
     }
 }
 
+int sd_get_default_sample_steps(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return 10;
+    }
+    switch (sd_ctx->sd->version) {
+        case VERSION_SD1:
+        case VERSION_SD2:
+            return 20;
+        case VERSION_SDXL:
+        case VERSION_SDXL_REFINER:
+        case VERSION_SD3_MEDIUM:
+        case VERSION_SD3_5_MEDIUM:
+        case VERSION_SD3_5_LARGE:
+        case VERSION_FLUX_DEV:
+        case VERSION_FLUX_SCHNELL:
+            return 10;
+        default:
+            return 10;
+    }
+}
+
 float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx) {
     if (sd_ctx == NULL) {
         return 1.0f;
     }
     switch (sd_ctx->sd->version) {
         case VERSION_SD1:
-            return 7.0f;
         case VERSION_SD2:
             return 9.0f;
         case VERSION_SDXL:

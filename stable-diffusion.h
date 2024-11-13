@@ -185,6 +185,7 @@ SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
 
 SD_API int sd_get_version(sd_ctx_t* sd_ctx);
 SD_API sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx);
+SD_API int sd_get_default_sample_steps(sd_ctx_t* sd_ctx);
 SD_API float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx);
 
 typedef struct upscaler_ctx_t upscaler_ctx_t;
