@@ -22,8 +22,8 @@
 
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
-#include "ggml.h"
 #include "ggml-cpu.h"
+#include "ggml.h"
 
 #ifdef SD_USE_CUBLAS
 #include "ggml-cuda.h"
@@ -1092,7 +1092,7 @@ public:
         ggml_graph_print(gf);
 #endif
         if (output != NULL) {
-            auto result = ggml_graph_node(gf, ggml_graph_n_nodes(gf) -1);
+            auto result = ggml_graph_node(gf, ggml_graph_n_nodes(gf) - 1);
             if (*output == NULL && output_ctx != NULL) {
                 *output = ggml_dup_tensor(output_ctx, result);
             }
