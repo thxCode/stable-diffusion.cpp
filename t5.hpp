@@ -418,8 +418,7 @@ public:
             weights = new_weights;
 
             if (padding) {
-                int pad_token_id = pad_id_;
-                tokens.insert(tokens.end(), length - tokens.size(), pad_token_id);
+                tokens.insert(tokens.end(), length - tokens.size(), pad_id_);
                 weights.insert(weights.end(), length - weights.size(), 1.0);
             }
         }
