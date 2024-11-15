@@ -1,5 +1,9 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.14) # for add_link_options and implicit target directories.
 project("stable-diffusion")
+
+if (NOT TARGET ggml)
+    cmake_policy(SET CMP0077 NEW)
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -113,7 +117,6 @@ add_definitions(-DGGML_MAX_NAME=128)
 # deps
 # Only add ggml if it hasn't been added yet
 if (NOT TARGET ggml)
-    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
     add_subdirectory(ggml)
 endif()
 
