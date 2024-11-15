@@ -14,10 +14,12 @@ struct UpscalerGGML {
         : n_threads(n_threads) {
     }
 
-    bool load_from_file(const std::string& esrgan_path) {
+    bool load_from_file(
+        const std::string& esrgan_path,
+        int main_gpu = 0) {
 #ifdef SD_USE_CUBLAS
         LOG_DEBUG("Using CUDA backend");
-        backend = ggml_backend_cuda_init(0);
+        backend = ggml_backend_cuda_init(main_gpu);
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
@@ -25,11 +27,11 @@ struct UpscalerGGML {
 #endif
 #ifdef SD_USE_CANN
         LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(0);
+        backend = ggml_backend_cann_init(main_gpu);
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
 #endif
 
         if (!backend) {
@@ -96,7 +98,8 @@ struct upscaler_ctx_t {
 
 upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
                                  int n_threads,
-                                 enum ggml_type wtype) {
+                                 enum ggml_type wtype,
+                                 int main_gpu) {
     upscaler_ctx_t* upscaler_ctx = (upscaler_ctx_t*)malloc(sizeof(upscaler_ctx_t));
     if (upscaler_ctx == NULL) {
         return NULL;
@@ -108,7 +111,7 @@ upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
         return NULL;
     }
 
-    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path)) {
+    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path, main_gpu)) {
         delete upscaler_ctx->upscaler;
         upscaler_ctx->upscaler = NULL;
         free(upscaler_ctx);
