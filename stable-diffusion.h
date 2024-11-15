@@ -183,6 +183,13 @@ SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
                            bool normalize_input,
                            const char* input_id_images_path);
 
+typedef struct sd_lora_adapter_container_t {
+    const char* path;
+    float multiplier;
+} sd_lora_adapter_container_t;
+
+SD_API void sd_lora_adapters_clear(sd_ctx_t* sd_ctx);
+SD_API void sd_lora_adapters_apply(sd_ctx_t* sd_ctx, std::vector<sd_lora_adapter_container_t>& lora_adapters);
 SD_API int sd_get_version(sd_ctx_t* sd_ctx);
 SD_API sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx);
 SD_API int sd_get_default_sample_steps(sd_ctx_t* sd_ctx);
