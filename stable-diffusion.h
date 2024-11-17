@@ -142,9 +142,7 @@ SD_API sd_ctx_t* new_sd_ctx(const char* model_path,
                             bool keep_control_net_cpu,
                             bool keep_vae_on_cpu,
                             int main_gpu = 0);
-
 SD_API void sd_ctx_free(sd_ctx_t* sd_ctx);
-
 SD_API sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                            const char* prompt,
                            const char* negative_prompt,
@@ -162,7 +160,6 @@ SD_API sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                            float style_strength,
                            bool normalize_input,
                            const char* input_id_images_path);
-
 SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
                            sd_image_t init_image,
                            const char* prompt,
@@ -182,6 +179,42 @@ SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
                            float style_strength,
                            bool normalize_input,
                            const char* input_id_images_path);
+SD_API sd_image_t* txt2img2(sd_ctx_t* sd_ctx,
+                            const char* prompt,
+                            const char* negative_prompt,
+                            int clip_skip,
+                            float cfg_scale,
+                            float guidance,
+                            int width,
+                            int height,
+                            enum sample_method_t sample_method,
+                            int sample_steps,
+                            int64_t seed,
+                            int batch_count,
+                            const sd_image_t* control_cond,
+                            float control_strength,
+                            float style_strength,
+                            bool normalize_input,
+                            const char* input_id_images_path);
+SD_API sd_image_t* img2img2(sd_ctx_t* sd_ctx,
+                            sd_image_t init_image,
+                            const char* prompt,
+                            const char* negative_prompt,
+                            int clip_skip,
+                            float cfg_scale,
+                            float guidance,
+                            int width,
+                            int height,
+                            enum sample_method_t sample_method,
+                            int sample_steps,
+                            float strength,
+                            int64_t seed,
+                            int batch_count,
+                            const sd_image_t* control_cond,
+                            float control_strength,
+                            float style_strength,
+                            bool normalize_input,
+                            const char* input_id_images_path);
 
 typedef struct sd_lora_adapter_container_t {
     const char* path;
@@ -195,18 +228,48 @@ SD_API sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx);
 SD_API int sd_get_default_sample_steps(sd_ctx_t* sd_ctx);
 SD_API float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx);
 
+typedef struct sd_sampling_stream_t sd_sampling_stream_t;
+
+SD_API sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
+                                            const char* prompt_c_str,
+                                            const char* negative_prompt_c_str,
+                                            int clip_skip,
+                                            float cfg_scale,
+                                            float guidance,
+                                            int width,
+                                            int height,
+                                            enum sample_method_t sample_method,
+                                            int sample_steps,
+                                            int64_t seed,
+                                            const sd_image_t* control_cond,
+                                            float control_strength);
+SD_API sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
+                                            sd_image_t init_image,
+                                            const char* prompt_c_str,
+                                            const char* negative_prompt_c_str,
+                                            int clip_skip,
+                                            float cfg_scale,
+                                            float guidance,
+                                            int width,
+                                            int height,
+                                            enum sample_method_t sample_method,
+                                            int sample_steps,
+                                            float strength,
+                                            int64_t seed,
+                                            const sd_image_t* control_cond,
+                                            float control_strength);
+SD_API void sd_sampling_stream_free(sd_sampling_stream_t* stream);
+SD_API bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+SD_API sd_image_t sd_samping_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+
 typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
                                         int n_threads,
                                         enum ggml_type wtype,
                                         int main_gpu = 0);
-
 SD_API void upscaler_ctx_free(upscaler_ctx_t* upscaler_ctx);
-
 SD_API sd_image_t upscale(upscaler_ctx_t* upscaler_ctx, sd_image_t input_image, uint32_t upscale_factor);
-
-SD_API bool convert(const char* input_path, const char* vae_path, const char* output_path, enum ggml_type output_type);
 
 SD_API uint8_t* preprocess_canny(uint8_t* img,
                                  int width,
@@ -216,6 +279,8 @@ SD_API uint8_t* preprocess_canny(uint8_t* img,
                                  float weak,
                                  float strong,
                                  bool inverse);
+
+SD_API bool convert(const char* input_path, const char* vae_path, const char* output_path, enum ggml_type output_type);
 
 #ifdef __cplusplus
 }
