@@ -2115,7 +2115,7 @@ int sd_sampling_stream_steps(sd_sampling_stream_t* stream) {
     if (stream == nullptr) {
         return 0;
     }
-    return stream->sample_steps + 1;
+    return stream->sample_steps;
 }
 
 void sd_sampling_stream_free(sd_sampling_stream_t* stream) {
