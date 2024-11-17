@@ -2104,6 +2104,20 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
                                control_strength);
 }
 
+int sd_sampling_stream_sampled_steps(sd_sampling_stream_t* stream) {
+    if (stream == nullptr) {
+        return 0;
+    }
+    return stream->sampled_steps;
+}
+
+int sd_sampling_stream_steps(sd_sampling_stream_t* stream) {
+    if (stream == nullptr) {
+        return 0;
+    }
+    return stream->sample_steps + 1;
+}
+
 void sd_sampling_stream_free(sd_sampling_stream_t* stream) {
     if (stream == nullptr) {
         return;

@@ -258,6 +258,8 @@ SD_API sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
                                             int64_t seed,
                                             const sd_image_t* control_cond,
                                             float control_strength);
+SD_API int sd_sampling_stream_sampled_steps(sd_sampling_stream_t* stream);
+SD_API int sd_sampling_stream_steps(sd_sampling_stream_t* stream);
 SD_API void sd_sampling_stream_free(sd_sampling_stream_t* stream);
 SD_API bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
 SD_API sd_image_t sd_samping_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
