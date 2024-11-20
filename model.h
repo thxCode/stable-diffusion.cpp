@@ -129,7 +129,7 @@ struct TensorStorage {
     }
 };
 
-typedef std::function<bool(const TensorStorage&, ggml_tensor**)> on_new_tensor_cb_t;
+typedef std::function<bool(const TensorStorage&, const SDVersion, ggml_tensor**)> on_new_tensor_cb_t;
 
 class ModelLoader {
 protected:
@@ -156,13 +156,23 @@ public:
     ggml_type get_conditioner_wtype();
     ggml_type get_diffusion_model_wtype();
     ggml_type get_vae_wtype();
-    bool load_tensors(on_new_tensor_cb_t on_new_tensor_cb, ggml_backend_t backend);
+    bool load_tensors(const on_new_tensor_cb_t& on_new_tensor_cb, ggml_backend_t backend);
     bool load_tensors(std::map<std::string, struct ggml_tensor*>& tensors,
                       ggml_backend_t backend,
                       std::set<std::string> ignore_tensors = {});
-    bool save_to_gguf_file(const std::string& file_path, ggml_type outtype, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_outtype = GGML_TYPE_COUNT);
+    bool save_to_gguf_file(const std::string& file_path,
+                           ggml_type outtype,
+                           ggml_type vae_outtype    = GGML_TYPE_COUNT,
+                           ggml_type clip_l_outtype = GGML_TYPE_COUNT,
+                           ggml_type clip_g_outtype = GGML_TYPE_COUNT,
+                           ggml_type t5xxl_outtype  = GGML_TYPE_COUNT);
     bool tensor_should_be_converted(const TensorStorage& tensor_storage, ggml_type type);
-    int64_t get_params_mem_size(ggml_backend_t backend, ggml_type outtype = GGML_TYPE_COUNT, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_outtype = GGML_TYPE_COUNT);
+    int64_t get_params_mem_size(ggml_backend_t backend,
+                                ggml_type outtype        = GGML_TYPE_COUNT,
+                                ggml_type vae_outtype    = GGML_TYPE_COUNT,
+                                ggml_type clip_l_outtype = GGML_TYPE_COUNT,
+                                ggml_type clip_g_outtype = GGML_TYPE_COUNT,
+                                ggml_type t5xxl_outtype  = GGML_TYPE_COUNT);
     ~ModelLoader() = default;
 
     static std::string load_merges();

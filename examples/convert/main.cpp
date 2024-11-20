@@ -34,9 +34,11 @@ struct convert_params {
     std::string clip_g_model_file_path;
     std::string t5xxl_model_file_path;
     std::string output_file_path;
-    ggml_type vae_output_type  = GGML_TYPE_COUNT;
-    ggml_type clip_output_type = GGML_TYPE_COUNT;
-    ggml_type output_type      = GGML_TYPE_F16;
+    ggml_type vae_output_type    = GGML_TYPE_COUNT;
+    ggml_type clip_l_output_type = GGML_TYPE_COUNT;
+    ggml_type clip_g_output_type = GGML_TYPE_COUNT;
+    ggml_type t5xxl_output_type  = GGML_TYPE_COUNT;
+    ggml_type output_type        = GGML_TYPE_F16;
 };
 
 static void convert_params_print_usage(int, char** argv, const convert_params& params) {
@@ -51,7 +53,9 @@ static void convert_params_print_usage(int, char** argv, const convert_params& p
     printf("  --t5xxl-model                      path to t5xxl model file\n");
     printf("  --outfile                          path to write to\n");
     printf("  --vae-outtype                      output format of vae model, reuse --outtype if not specified\n");
-    printf("  --clip-outtype                     output format of clip_l/clip_g/t5xxl model, reuse --outtype if not specified\n");
+    printf("  --clip-l-outtype                   output format of clip_l model, reuse --outtype if not specified\n");
+    printf("  --clip-g-outtype                   output format of clip_g model, reuse --outtype if not specified\n");
+    printf("  --t5xxl-outtype                    output format of t5xxl model, reuse --outtype if not specified\n");
     printf("  --outtype                          output format, select from fp32;fp16;q8_0;q5_1;q5_0;q4_1;q4_0;q4_k;q3_k;q2_k\n");
 }
 
@@ -157,14 +161,38 @@ static bool convert_params_parse(int argc, char** argv, convert_params& params) 
                 continue;
             }
 
-            if (!strcmp(flag, "--clip-outtype")) {
+            if (!strcmp(flag, "--clip-l-outtype")) {
                 if (i == argc) {
-                    missing("--clip-outtype");
+                    missing("--clip-l-outtype");
                 }
-                const char* outtype     = argv[i++];
-                params.clip_output_type = convert_str_to_ggml_type(outtype);
-                if (params.clip_output_type >= GGML_TYPE_COUNT) {
-                    invalid("--clip-outtype");
+                const char* outtype       = argv[i++];
+                params.clip_l_output_type = convert_str_to_ggml_type(outtype);
+                if (params.clip_l_output_type >= GGML_TYPE_COUNT) {
+                    invalid("--clip-l-outtype");
+                }
+                continue;
+            }
+
+            if (!strcmp(flag, "--clip-g-outtype")) {
+                if (i == argc) {
+                    missing("--clip-g-outtype");
+                }
+                const char* outtype       = argv[i++];
+                params.clip_g_output_type = convert_str_to_ggml_type(outtype);
+                if (params.clip_g_output_type >= GGML_TYPE_COUNT) {
+                    invalid("--clip-g-outtype");
+                }
+                continue;
+            }
+
+            if (!strcmp(flag, "--t5xxl-outtype")) {
+                if (i == argc) {
+                    missing("--t5xxl-outtype");
+                }
+                const char* outtype      = argv[i++];
+                params.t5xxl_output_type = convert_str_to_ggml_type(outtype);
+                if (params.t5xxl_output_type >= GGML_TYPE_COUNT) {
+                    invalid("--t5xxl-outtype");
                 }
                 continue;
             }
@@ -252,7 +280,7 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
     bool loaded = false;
 
     if (params.clip_l_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_l_output_type, "te.");
     } else {
         loaded = loader.init_from_file(params.clip_l_model_file_path, "te.");
     }
@@ -262,7 +290,7 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
     }
 
     if (params.clip_g_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.clip_output_type, "te1.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.clip_g_output_type, "te1.");
     } else {
         loaded = loader.init_from_file(params.clip_g_model_file_path, "te1.");
     }
@@ -272,7 +300,7 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
     }
 
     if (params.t5xxl_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_3/model", params.clip_output_type, "te2.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_3/model", params.t5xxl_output_type, "te2.");
     } else {
         loaded = loader.init_from_file(params.t5xxl_model_file_path, "te2.");
     }
@@ -308,7 +336,12 @@ int convert_sd3(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+    return !loader.save_to_gguf_file(params.output_file_path,
+                                     params.output_type,
+                                     params.vae_output_type,
+                                     params.clip_l_output_type,
+                                     params.clip_g_output_type,
+                                     params.t5xxl_output_type);
 }
 
 int convert_flux(const convert_params& params, const SDVersion ver) {
@@ -316,7 +349,7 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
     bool loaded = false;
 
     if (params.clip_l_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_l_output_type, "te.");
     } else {
         loaded = loader.init_from_file(params.clip_l_model_file_path, "te.");
     }
@@ -326,7 +359,7 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
     }
 
     if (params.t5xxl_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.clip_output_type, "te1.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.t5xxl_output_type, "te1.");
     } else {
         loaded = loader.init_from_file(params.t5xxl_model_file_path, "te1.");
     }
@@ -366,7 +399,12 @@ int convert_flux(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+    return !loader.save_to_gguf_file(params.output_file_path,
+                                     params.output_type,
+                                     params.vae_output_type,
+                                     params.clip_l_output_type,
+                                     params.clip_g_output_type,
+                                     params.t5xxl_output_type);
 }
 
 int convert_sdxl(const convert_params& params, const SDVersion ver) {
@@ -375,7 +413,9 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
 
     if (params.clip_l_model_file_path.empty()) {
         if (is_directory(path_join(params.model_path, "text_encoder"))) {
-            loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
+            loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_l_output_type, "te.");
+        } else {
+            loaded = true;
         }
     } else {
         loaded = loader.init_from_file(params.clip_l_model_file_path, "te.");
@@ -386,7 +426,7 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
     }
 
     if (params.clip_g_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.clip_output_type, "te1.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder_2/model", params.clip_g_output_type, "te1.");
     } else {
         loaded = loader.init_from_file(params.clip_g_model_file_path, "te1.");
     }
@@ -422,7 +462,12 @@ int convert_sdxl(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+    return !loader.save_to_gguf_file(params.output_file_path,
+                                     params.output_type,
+                                     params.vae_output_type,
+                                     params.clip_l_output_type,
+                                     params.clip_g_output_type,
+                                     params.t5xxl_output_type);
 }
 
 int convert_sd(const convert_params& params, const SDVersion ver) {
@@ -430,7 +475,7 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
     bool loaded = false;
 
     if (params.clip_l_model_file_path.empty()) {
-        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_output_type, "te.");
+        loaded = loader.init_from_safetensors_file(params.model_path, "text_encoder/model", params.clip_l_output_type, "te.");
     } else {
         loaded = loader.init_from_file(params.clip_l_model_file_path, "te.");
     }
@@ -466,7 +511,12 @@ int convert_sd(const convert_params& params, const SDVersion ver) {
         return 1;
     }
 
-    return !loader.save_to_gguf_file(params.output_file_path, params.output_type, params.vae_output_type, params.clip_output_type);
+    return !loader.save_to_gguf_file(params.output_file_path,
+                                     params.output_type,
+                                     params.vae_output_type,
+                                     params.clip_l_output_type,
+                                     params.clip_g_output_type,
+                                     params.t5xxl_output_type);
 }
 
 int convert_file(const convert_params& params) {

@@ -60,10 +60,10 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
     FrozenCLIPEmbedderWithCustomWords(ggml_backend_t backend,
                                       ggml_type wtype,
                                       const std::string& embd_dir,
-                                      SDVersion version = VERSION_SD1,
+                                      SDVersion version                = VERSION_SD1,
                                       bool compvis_compatiblity_clip_l = false,
                                       bool compvis_compatiblity_clip_g = false,
-                                      int clip_skip     = -1)
+                                      int clip_skip                    = -1)
         : version(version),
           tokenizer(version == VERSION_SD2 ? 0 : 49407),
           embd_dir(embd_dir),
@@ -166,7 +166,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         } else {
             hidden_size = text_model2->model.hidden_size;
         }
-        auto on_load = [&](const TensorStorage& tensor_storage, ggml_tensor** dst_tensor) {
+        auto on_load = [&](const TensorStorage& tensor_storage, const SDVersion ver, ggml_tensor** dst_tensor) {
             if (tensor_storage.ne[0] != hidden_size) {
                 LOG_DEBUG("embedding wrong hidden size, got %i, expected %i", tensor_storage.ne[0], hidden_size);
                 return false;

@@ -1761,6 +1761,7 @@ int sd_get_default_sample_steps(sd_ctx_t* sd_ctx) {
             return 20;
         case VERSION_SDXL:
         case VERSION_SDXL_REFINER:
+            return 40;
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
@@ -1782,7 +1783,7 @@ float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx) {
             return 9.0f;
         case VERSION_SDXL:
         case VERSION_SDXL_REFINER:
-            return 7.5f;
+            return 5.0f;
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
