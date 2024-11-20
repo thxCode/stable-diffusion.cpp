@@ -319,6 +319,11 @@ public:
                 break;
         }
 
+        auto cc_clip_l = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.clip_l.");
+        auto cc_clip_g = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.clip_g.");
+        auto cc_t5xxl  = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.t5xxl.");
+        auto cc_vae = model_loader.has_prefix_tensors("first_stage_model.") && !model_loader.has_prefix_tensors("vae.");
+
         if (version == VERSION_SVD) {
             clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(backend, conditioner_wtype);
             clip_vision->alloc_params_buffer();
@@ -328,10 +333,10 @@ public:
             diffusion_model->alloc_params_buffer();
             diffusion_model->get_param_tensors(tensors);
 
-            first_stage_model = std::make_shared<AutoEncoderKL>(backend, vae_wtype, vae_decode_only, true, version);
+            first_stage_model = std::make_shared<AutoEncoderKL>(backend, vae_wtype, vae_decode_only, true, version, cc_vae);
             LOG_DEBUG("vae_decode_only %d", vae_decode_only);
             first_stage_model->alloc_params_buffer();
-            first_stage_model->get_param_tensors(tensors, "first_stage_model");
+            first_stage_model->get_param_tensors(tensors);
         } else {
             clip_backend   = backend;
             bool use_t5xxl = false;
@@ -347,13 +352,13 @@ public:
                 clip_backend = ggml_backend_cpu_init();
             }
             if (version == VERSION_SD3_MEDIUM || version == VERSION_SD3_5_MEDIUM || version == VERSION_SD3_5_LARGE) {
-                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype, model_loader.has_prefix_tensors("cond_stage_model."));
+                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype, cc_clip_l, cc_clip_g, cc_t5xxl);
                 diffusion_model  = std::make_shared<MMDiTModel>(backend, diffusion_model_wtype, version);
             } else if (version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
-                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype, model_loader.has_prefix_tensors("cond_stage_model."));
+                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype, cc_clip_l, cc_t5xxl);
                 diffusion_model  = std::make_shared<FluxModel>(backend, diffusion_model_wtype, version);
             } else {
-                cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, conditioner_wtype, embeddings_path, version);
+                cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, conditioner_wtype, embeddings_path, version, cc_clip_l, cc_clip_g);
                 diffusion_model  = std::make_shared<UNetModel>(backend, diffusion_model_wtype, version);
             }
             cond_stage_model->alloc_params_buffer();
@@ -369,9 +374,9 @@ public:
                 } else {
                     vae_backend = backend;
                 }
-                first_stage_model = std::make_shared<AutoEncoderKL>(vae_backend, vae_wtype, vae_decode_only, false, version);
+                first_stage_model = std::make_shared<AutoEncoderKL>(vae_backend, vae_wtype, vae_decode_only, false, version, cc_vae);
                 first_stage_model->alloc_params_buffer();
-                first_stage_model->get_param_tensors(tensors, "first_stage_model");
+                first_stage_model->get_param_tensors(tensors);
             } else {
                 tae_first_stage = std::make_shared<TinyAutoEncoder>(backend, vae_wtype, vae_decode_only);
             }

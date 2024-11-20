@@ -52,7 +52,7 @@ static void convert_params_print_usage(int, char** argv, const convert_params& p
     printf("  --outfile                          path to write to\n");
     printf("  --vae-outtype                      output format of vae model, reuse --outtype if not specified\n");
     printf("  --clip-outtype                     output format of clip_l/clip_g/t5xxl model, reuse --outtype if not specified\n");
-    printf("  --outtype                          output format, select from fp32;fp16;q8_0;q4_0\n");
+    printf("  --outtype                          output format, select from fp32;fp16;q8_0;q5_1;q5_0;q4_1;q4_0;q4_k;q3_k;q2_k\n");
 }
 
 static ggml_type convert_str_to_ggml_type(const std::string& str) {
@@ -62,8 +62,20 @@ static ggml_type convert_str_to_ggml_type(const std::string& str) {
         return GGML_TYPE_F16;
     } else if (str == "q8_0") {
         return GGML_TYPE_Q8_0;
+    } else if (str == "q5_1") {
+        return GGML_TYPE_Q5_1;
+    } else if (str == "q5_0") {
+        return GGML_TYPE_Q5_0;
+    } else if (str == "q4_1") {
+        return GGML_TYPE_Q4_1;
     } else if (str == "q4_0") {
         return GGML_TYPE_Q4_0;
+    } else if (str == "q4_k") {
+        return GGML_TYPE_Q4_K;
+    } else if (str == "q3_k") {
+        return GGML_TYPE_Q3_K;
+    } else if (str == "q2_k") {
+        return GGML_TYPE_Q2_K;
     }
     return GGML_TYPE_COUNT;
 }
