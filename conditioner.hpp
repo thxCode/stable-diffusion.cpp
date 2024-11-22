@@ -1073,7 +1073,7 @@ struct FluxCLIPEmbedder : public Conditioner {
             clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
         }
         if (compvis_compatiblity_t5xxl) {
-            t5->get_param_tensors(tensors, "cond_stage_model.2.transformer");
+            t5->get_param_tensors(tensors, "cond_stage_model.1.transformer");
         } else {
             t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
         }
