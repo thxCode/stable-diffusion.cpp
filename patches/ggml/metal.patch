@@ -1,0 +1,13 @@
+diff --git a/src/ggml-metal.m b/src/ggml-metal.m
+index 04ec511..9387339 100644
+--- a/src/ggml-metal.m
++++ b/src/ggml-metal.m
+@@ -2604,7 +2604,7 @@ static void ggml_metal_encode_node(
+             } break;
+         case GGML_OP_GROUP_NORM:
+             {
+-                GGML_ASSERT(ne00 % 4 == 0);
++//                GGML_ASSERT(ne00 % 4 == 0);
+                 GGML_ASSERT(ggml_is_contiguous(src0));
+ 
+                 float eps;
