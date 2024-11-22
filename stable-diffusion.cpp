@@ -1387,8 +1387,6 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
-            params.mem_size *= 3;
-            break;
         case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
             params.mem_size *= 4;
@@ -1501,11 +1499,9 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
-            params.mem_size *= 2;
-            break;
         case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
-            params.mem_size *= 3;
+            params.mem_size *= 4;
             break;
         default:
             break;
