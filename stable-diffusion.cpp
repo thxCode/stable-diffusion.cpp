@@ -343,7 +343,7 @@ public:
             if (version == VERSION_SD3_MEDIUM || version == VERSION_SD3_5_MEDIUM || version == VERSION_SD3_5_LARGE || version == VERSION_FLUX_DEV || version == VERSION_FLUX_SCHNELL) {
                 use_t5xxl = true;
             }
-            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype < GGML_TYPE_F16) {
+            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != diffusion_model_wtype) {
                 clip_on_cpu = true;
                 LOG_INFO("set clip_on_cpu to true");
             }
