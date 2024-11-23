@@ -10,7 +10,6 @@
 #include "control.hpp"
 #include "denoiser.hpp"
 #include "diffusion_model.hpp"
-#include "esrgan.hpp"
 #include "lora.hpp"
 #include "pmid.hpp"
 #include "tae.hpp"
@@ -322,7 +321,7 @@ public:
         auto cc_clip_l = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.clip_l.");
         auto cc_clip_g = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.clip_g.");
         auto cc_t5xxl  = model_loader.has_prefix_tensors("cond_stage_model.") && !model_loader.has_prefix_tensors("text_encoders.t5xxl.");
-        auto cc_vae = model_loader.has_prefix_tensors("first_stage_model.") && !model_loader.has_prefix_tensors("vae.");
+        auto cc_vae    = model_loader.has_prefix_tensors("first_stage_model.") && !model_loader.has_prefix_tensors("vae.");
 
         if (version == VERSION_SVD) {
             clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(backend, conditioner_wtype);
@@ -1903,24 +1902,24 @@ sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
     struct ggml_tensor* denoised = ggml_dup_tensor(work_ctx, x);
 
     return new sd_sampling_stream_t{
-        .cond             = cond,
-        .uncond           = uncond,
-        .control_hint     = control_hint,
-        .x                = x,
-        .noised_input     = noised_input,
-        .out_cond         = out_cond,
-        .out_uncond       = out_uncond,
-        .denoised         = denoised,
-        .work_ctx         = work_ctx,
-        .cfg_scale        = cfg_scale,
-        .guidance         = guidance,
-        .sampler          = get_sampler(sample_method),
-        .sample_steps     = sample_steps,
-        .control_strength = control_strength,
-        .sigmas           = sigmas,
-        .rng              = rng,
-        .sampling_start   = static_cast<size_t>(ggml_time_ms()),
-        .sampled_steps    = 0,
+        cond,
+        uncond,
+        control_hint,
+        x,
+        noised_input,
+        out_cond,
+        out_uncond,
+        denoised,
+        work_ctx,
+        cfg_scale,
+        guidance,
+        get_sampler(sample_method),
+        sample_steps,
+        control_strength,
+        sigmas,
+        rng,
+        static_cast<size_t>(ggml_time_ms()),
+        0,
     };
 }
 
@@ -2283,9 +2282,9 @@ sd_image_t sd_samping_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* s
     LOG_INFO("decode_first_stage completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
 
     return sd_image_t{
-        .width   = static_cast<uint32_t>(decoded_image->ne[0]),
-        .height  = static_cast<uint32_t>(decoded_image->ne[1]),
-        .channel = static_cast<uint32_t>(decoded_image->ne[2]),
-        .data    = sd_tensor_to_image(decoded_image),
+        static_cast<uint32_t>(decoded_image->ne[0]),
+        static_cast<uint32_t>(decoded_image->ne[1]),
+        static_cast<uint32_t>(decoded_image->ne[2]),
+        sd_tensor_to_image(decoded_image),
     };
 }
