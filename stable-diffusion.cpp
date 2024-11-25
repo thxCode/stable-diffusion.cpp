@@ -1738,8 +1738,8 @@ sample_method_t sd_get_default_sample_method(sd_ctx_t* sd_ctx) {
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
-        case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
+        case VERSION_FLUX_DEV:
             return EULER;
         default:
             return EULER_A;
@@ -1760,8 +1760,8 @@ int sd_get_default_sample_steps(sd_ctx_t* sd_ctx) {
         case VERSION_SD3_MEDIUM:
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
-        case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
+        case VERSION_FLUX_DEV:
             return 10;
         default:
             return 20;
@@ -1783,8 +1783,8 @@ float sd_get_default_cfg_scale(sd_ctx_t* sd_ctx) {
         case VERSION_SD3_5_MEDIUM:
         case VERSION_SD3_5_LARGE:
             return 4.5f;
-        case VERSION_FLUX_DEV:
         case VERSION_FLUX_SCHNELL:
+        case VERSION_FLUX_DEV:
             return 1.0f;
         default:
             return 9.0f;
