@@ -924,10 +924,10 @@ public:
                         int start_merge_step,
                         SDCondition id_cond,
                         std::shared_ptr<RNG>& rng,
-                        std::vector<int> skip_layers = {},
-                        float slg_scale              = 0,
-                        float skip_layer_start       = 0.01,
-                        float skip_layer_end         = 0.2,
+                        std::vector<int> skip_layers                                    = {},
+                        float slg_scale                                                 = 0,
+                        float skip_layer_start                                          = 0.01,
+                        float skip_layer_end                                            = 0.2,
                         std::function<void(int, ggml_tensor*, SDVersion)> step_callback = nullptr) {
         size_t steps = sigmas.size() - 1;
         // noise = load_tensor_from_file(work_ctx, "./rand0.bin");
@@ -1619,11 +1619,11 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                     float style_ratio,
                     bool normalize_input,
                     const char* input_id_images_path_c_str,
-                    int* skip_layers         = NULL,
-                    size_t skip_layers_count = 0,
-                    float slg_scale          = 0,
-                    float skip_layer_start   = 0.01,
-                    float skip_layer_end     = 0.2,
+                    int* skip_layers              = NULL,
+                    size_t skip_layers_count      = 0,
+                    float slg_scale               = 0,
+                    float skip_layer_start        = 0.01,
+                    float skip_layer_end          = 0.2,
                     step_callback_t step_callback = NULL) {
     std::vector<int> skip_layers_vec(skip_layers, skip_layers + skip_layers_count);
     LOG_DEBUG("txt2img %dx%d", width, height);
@@ -1726,11 +1726,11 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
                     float style_ratio,
                     bool normalize_input,
                     const char* input_id_images_path_c_str,
-                    int* skip_layers         = NULL,
-                    size_t skip_layers_count = 0,
-                    float slg_scale          = 0,
-                    float skip_layer_start   = 0.01,
-                    float skip_layer_end     = 0.2,
+                    int* skip_layers              = NULL,
+                    size_t skip_layers_count      = 0,
+                    float slg_scale               = 0,
+                    float skip_layer_start        = 0.01,
+                    float skip_layer_end          = 0.2,
                     step_callback_t step_callback = NULL) {
     std::vector<int> skip_layers_vec(skip_layers, skip_layers + skip_layers_count);
     LOG_DEBUG("img2img %dx%d", width, height);
