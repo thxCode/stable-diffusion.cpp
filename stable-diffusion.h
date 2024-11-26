@@ -210,7 +210,8 @@ SD_API sd_image_t* img2img(sd_ctx_t* sd_ctx,
                            size_t skip_layers_count,
                            float slg_scale,
                            float skip_layer_start,
-                           float skip_layer_end);
+                           float skip_layer_end,
+                           step_callback_t step_callback);
 
 SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                            sd_image_t init_image,
@@ -225,7 +226,8 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                            enum sample_method_t sample_method,
                            int sample_steps,
                            float strength,
-                           int64_t seed);
+                           int64_t seed,
+                           step_callback_t step_callback);
 
 typedef struct sd_lora_adapter_container_t {
     const char* path;
