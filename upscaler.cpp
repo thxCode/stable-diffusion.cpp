@@ -14,7 +14,7 @@ struct UpscalerGGML {
         : n_threads(n_threads) {
     }
 
-    bool load_from_file(const std::string& esrgan_path) {
+    bool load_from_file(const std::string& esrgan_path, int main_gpu) {
 #ifdef SD_USE_CUDA
 #ifdef SD_USE_HIP
         LOG_DEBUG("Using HIP backend");
@@ -25,7 +25,7 @@ struct UpscalerGGML {
         LOG_DEBUG("Using CUDA backend");
 #endif
 #endif
-        backend = ggml_backend_cuda_init(0);
+        backend = ggml_backend_cuda_init(main_gpu);
         if (!backend) {
             LOG_ERROR("CUDA backend init failed");
         }
@@ -39,21 +39,21 @@ struct UpscalerGGML {
 #endif
 #ifdef SD_USE_VULKAN
         LOG_DEBUG("Using Vulkan backend");
-        backend = ggml_backend_vk_init(0);
+        backend = ggml_backend_vk_init(main_gpu);
         if (!backend) {
             LOG_ERROR("Vulkan backend init failed");
         }
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
         if (!backend) {
             LOG_ERROR("SYCL backend init failed");
         }
 #endif
 #ifdef SD_USE_CANN
         LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(0);
+        backend = ggml_backend_cann_init(main_gpu);
         if (!backend) {
             LOG_ERROR("CANN backend init failed");
         }
@@ -124,7 +124,8 @@ struct upscaler_ctx_t {
 
 upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
                                  int n_threads,
-                                 enum sd_type_t wtype) {
+                                 enum sd_type_t wtype,
+                                 int main_gpu) {
     upscaler_ctx_t* upscaler_ctx = (upscaler_ctx_t*)malloc(sizeof(upscaler_ctx_t));
     if (upscaler_ctx == NULL) {
         return NULL;
@@ -136,7 +137,7 @@ upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
         return NULL;
     }
 
-    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path)) {
+    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path, main_gpu)) {
         delete upscaler_ctx->upscaler;
         upscaler_ctx->upscaler = NULL;
         free(upscaler_ctx);

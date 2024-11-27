@@ -197,7 +197,8 @@ public:
                         bool clip_on_cpu,
                         bool control_net_cpu,
                         bool vae_on_cpu,
-                        bool diffusion_flash_attn) {
+                        bool diffusion_flash_attn,
+                        int main_gpu) {
         use_tiny_autoencoder = taesd_path.size() > 0;
 #ifdef SD_USE_CUDA
 #ifdef SD_USE_HIP
@@ -209,7 +210,7 @@ public:
         LOG_DEBUG("Using CUDA backend");
 #endif
 #endif
-        backend = ggml_backend_cuda_init(0);
+        backend = ggml_backend_cuda_init(main_gpu);
         if (!backend) {
             LOG_ERROR("CUDA backend init failed");
         }
@@ -223,21 +224,21 @@ public:
 #endif
 #ifdef SD_USE_VULKAN
         LOG_DEBUG("Using Vulkan backend");
-        backend = ggml_backend_vk_init(0);
+        backend = ggml_backend_vk_init(main_gpu);
         if (!backend) {
             LOG_ERROR("Vulkan backend init failed");
         }
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
         if (!backend) {
             LOG_ERROR("SYCL backend init failed");
         }
 #endif
 #ifdef SD_USE_CANN
         LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(0);
+        backend = ggml_backend_cann_init(main_gpu);
         if (!backend) {
             LOG_ERROR("CANN backend init failed");
         }
@@ -1144,7 +1145,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool keep_clip_on_cpu,
                      bool keep_control_net_cpu,
                      bool keep_vae_on_cpu,
-                     bool diffusion_flash_attn) {
+                     bool diffusion_flash_attn,
+                     int main_gpu) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
         return NULL;
@@ -1186,7 +1188,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     keep_clip_on_cpu,
                                     keep_control_net_cpu,
                                     keep_vae_on_cpu,
-                                    diffusion_flash_attn)) {
+                                    diffusion_flash_attn,
+                                    main_gpu)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
         free(sd_ctx);
