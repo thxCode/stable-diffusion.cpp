@@ -176,6 +176,7 @@ struct AYSSchedule : SigmaSchedule {
                 inputs = noise_levels[0];
                 break;
             case VERSION_SDXL:
+            case VERSION_SDXL_REFINER:
                 LOG_INFO("AYS using SDXL noise levels");
                 inputs = noise_levels[1];
                 break;
