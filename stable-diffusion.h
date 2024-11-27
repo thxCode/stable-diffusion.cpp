@@ -28,6 +28,8 @@ extern "C" {
 #include <stdint.h>
 #include <string.h>
 
+#include "ggml.h"
+
 enum rng_type_t {
     STD_DEFAULT_RNG,
     CUDA_RNG,
@@ -94,49 +96,6 @@ static const char* schedulers_argument_str[] = {
 SD_API schedule_t sd_argument_to_schedule(const char* str);
 SD_API const char* sd_schedule_to_argument(schedule_t schedule);
 
-// same as enum ggml_type
-enum sd_type_t {
-    SD_TYPE_F32  = 0,
-    SD_TYPE_F16  = 1,
-    SD_TYPE_Q4_0 = 2,
-    SD_TYPE_Q4_1 = 3,
-    // SD_TYPE_Q4_2 = 4, support has been removed
-    // SD_TYPE_Q4_3 = 5, support has been removed
-    SD_TYPE_Q5_0     = 6,
-    SD_TYPE_Q5_1     = 7,
-    SD_TYPE_Q8_0     = 8,
-    SD_TYPE_Q8_1     = 9,
-    SD_TYPE_Q2_K     = 10,
-    SD_TYPE_Q3_K     = 11,
-    SD_TYPE_Q4_K     = 12,
-    SD_TYPE_Q5_K     = 13,
-    SD_TYPE_Q6_K     = 14,
-    SD_TYPE_Q8_K     = 15,
-    SD_TYPE_IQ2_XXS  = 16,
-    SD_TYPE_IQ2_XS   = 17,
-    SD_TYPE_IQ3_XXS  = 18,
-    SD_TYPE_IQ1_S    = 19,
-    SD_TYPE_IQ4_NL   = 20,
-    SD_TYPE_IQ3_S    = 21,
-    SD_TYPE_IQ2_S    = 22,
-    SD_TYPE_IQ4_XS   = 23,
-    SD_TYPE_I8       = 24,
-    SD_TYPE_I16      = 25,
-    SD_TYPE_I32      = 26,
-    SD_TYPE_I64      = 27,
-    SD_TYPE_F64      = 28,
-    SD_TYPE_IQ1_M    = 29,
-    SD_TYPE_BF16     = 30,
-    SD_TYPE_Q4_0_4_4 = 31,
-    SD_TYPE_Q4_0_4_8 = 32,
-    SD_TYPE_Q4_0_8_8 = 33,
-    SD_TYPE_TQ1_0    = 34,
-    SD_TYPE_TQ2_0    = 35,
-    SD_TYPE_COUNT,
-};
-
-SD_API const char* sd_type_name(enum sd_type_t type);
-
 enum sd_log_level_t {
     SD_LOG_DEBUG,
     SD_LOG_INFO,
@@ -176,7 +135,7 @@ SD_API sd_ctx_t* new_sd_ctx(const char* model_path,
                             bool vae_tiling,
                             bool free_params_immediately,
                             int n_threads,
-                            enum sd_type_t wtype,
+                            enum ggml_type wtype,
                             enum rng_type_t rng_type,
                             enum schedule_t s,
                             bool keep_clip_on_cpu,
@@ -254,13 +213,13 @@ typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
                                         int n_threads,
-                                        enum sd_type_t wtype,
+                                        enum ggml_type wtype,
                                         int main_gpu = 0);
 SD_API void free_upscaler_ctx(upscaler_ctx_t* upscaler_ctx);
 
 SD_API sd_image_t upscale(upscaler_ctx_t* upscaler_ctx, sd_image_t input_image, uint32_t upscale_factor);
 
-SD_API bool convert(const char* input_path, const char* vae_path, const char* output_path, enum sd_type_t output_type);
+SD_API bool convert(const char* input_path, const char* vae_path, const char* output_path, enum ggml_type output_type);
 
 SD_API uint8_t* preprocess_canny(uint8_t* img,
                                  int width,

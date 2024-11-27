@@ -124,7 +124,7 @@ struct upscaler_ctx_t {
 
 upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
                                  int n_threads,
-                                 enum sd_type_t wtype,
+                                 enum ggml_type wtype,
                                  int main_gpu) {
     upscaler_ctx_t* upscaler_ctx = (upscaler_ctx_t*)malloc(sizeof(upscaler_ctx_t));
     if (upscaler_ctx == NULL) {

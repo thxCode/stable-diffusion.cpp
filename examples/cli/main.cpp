@@ -52,7 +52,7 @@ struct SDParams {
     std::string embeddings_path;
     std::string stacked_id_embeddings_path;
     std::string input_id_images_path;
-    sd_type_t wtype = SD_TYPE_COUNT;
+    ggml_type wtype = GGML_TYPE_COUNT;
     std::string lora_model_dir;
     std::string output_path = "output.png";
     std::string input_path;
@@ -103,7 +103,7 @@ void print_params(SDParams params) {
     printf("    n_threads:         %d\n", params.n_threads);
     printf("    mode:              %s\n", modes_str[params.mode]);
     printf("    model_path:        %s\n", params.model_path.c_str());
-    printf("    wtype:             %s\n", params.wtype < SD_TYPE_COUNT ? sd_type_name(params.wtype) : "unspecified");
+    printf("    wtype:             %s\n", params.wtype < GGML_TYPE_COUNT ? ggml_type_name(params.wtype) : "unspecified");
     printf("    clip_l_path:       %s\n", params.clip_l_path.c_str());
     printf("    clip_g_path:       %s\n", params.clip_g_path.c_str());
     printf("    t5xxl_path:        %s\n", params.t5xxl_path.c_str());
@@ -319,25 +319,25 @@ void parse_args(int argc, const char** argv, SDParams& params) {
             }
             std::string type = argv[i];
             if (type == "f32") {
-                params.wtype = SD_TYPE_F32;
+                params.wtype = GGML_TYPE_F32;
             } else if (type == "f16") {
-                params.wtype = SD_TYPE_F16;
+                params.wtype = GGML_TYPE_F16;
             } else if (type == "q4_0") {
-                params.wtype = SD_TYPE_Q4_0;
+                params.wtype = GGML_TYPE_Q4_0;
             } else if (type == "q4_1") {
-                params.wtype = SD_TYPE_Q4_1;
+                params.wtype = GGML_TYPE_Q4_1;
             } else if (type == "q5_0") {
-                params.wtype = SD_TYPE_Q5_0;
+                params.wtype = GGML_TYPE_Q5_0;
             } else if (type == "q5_1") {
-                params.wtype = SD_TYPE_Q5_1;
+                params.wtype = GGML_TYPE_Q5_1;
             } else if (type == "q8_0") {
-                params.wtype = SD_TYPE_Q8_0;
+                params.wtype = GGML_TYPE_Q8_0;
             } else if (type == "q2_k") {
-                params.wtype = SD_TYPE_Q2_K;
+                params.wtype = GGML_TYPE_Q2_K;
             } else if (type == "q3_k") {
-                params.wtype = SD_TYPE_Q3_K;
+                params.wtype = GGML_TYPE_Q3_K;
             } else if (type == "q4_k") {
-                params.wtype = SD_TYPE_Q4_K;
+                params.wtype = GGML_TYPE_Q4_K;
             } else {
                 fprintf(stderr, "error: invalid weight format %s, must be one of [f32, f16, q4_0, q4_1, q5_0, q5_1, q8_0, q2_k, q3_k, q4_k]\n",
                         type.c_str());

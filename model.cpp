@@ -1983,7 +1983,7 @@ int64_t ModelLoader::get_params_mem_size(ggml_backend_t backend, ggml_type type)
     return mem_size;
 }
 
-bool convert(const char* input_path, const char* vae_path, const char* output_path, sd_type_t output_type) {
+bool convert(const char* input_path, const char* vae_path, const char* output_path, enum ggml_type output_type) {
     ModelLoader model_loader;
 
     if (!model_loader.init_from_file(input_path)) {
@@ -1997,6 +1997,6 @@ bool convert(const char* input_path, const char* vae_path, const char* output_pa
             return false;
         }
     }
-    bool success = model_loader.save_to_gguf_file(output_path, (ggml_type)output_type);
+    bool success = model_loader.save_to_gguf_file(output_path, output_type);
     return success;
 }
