@@ -30,12 +30,12 @@ const char* model_version_to_str[] = {
     "SDXL",
     "SDXL Refiner",
     "SVD",
-    "SD3 2B",
+    "SD3 Medium",
     "Flux Dev",
     "Flux Schnell",
-    "SD3.5 8B",
-    "SD3.5 2B",
-    "Flux Lite 8B",
+    "SD3.5 Large",
+    "SD3.5 Medium",
+    "Flux Lite",
 };
 
 const char* sampling_methods_str[] = {
@@ -338,13 +338,6 @@ public:
 
         if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
             scale_factor = 0.13025f;
-            if (vae_path.size() == 0 && taesd_path.size() == 0) {
-                LOG_WARN(
-                    "!!!It looks like you are using SDXL model. "
-                    "If you find that the generated images are completely black, "
-                    "try specifying SDXL VAE FP16 Fix with the --vae parameter. "
-                    "You can find it here: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors");
-            }
         } else if (sd_version_is_sd3(version)) {
             scale_factor = 1.5305f;
         } else if (sd_version_is_flux(version)) {
@@ -376,7 +369,7 @@ public:
             if (sd_version_is_dit(version)) {
                 use_t5xxl = true;
             }
-            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != GGML_TYPE_F32) {
+            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != diffusion_model_wtype) {
                 clip_on_cpu = true;
                 LOG_INFO("set clip_on_cpu to true");
             }

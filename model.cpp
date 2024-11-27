@@ -1564,20 +1564,7 @@ SDVersion ModelLoader::get_sd_version() {
 }
 
 ggml_type ModelLoader::get_sd_wtype() {
-    for (auto& tensor_storage : tensor_storages) {
-        if (is_unused_tensor(tensor_storage.name)) {
-            continue;
-        }
-
-        if (ggml_is_quantized(tensor_storage.type)) {
-            return tensor_storage.type;
-        }
-
-        if (tensor_should_be_converted(tensor_storage, GGML_TYPE_Q4_K)) {
-            return tensor_storage.type;
-        }
-    }
-    return GGML_TYPE_COUNT;
+    return get_diffusion_model_wtype();
 }
 
 ggml_type ModelLoader::get_conditioner_wtype() {
