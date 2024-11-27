@@ -1463,31 +1463,43 @@ bool ModelLoader::init_from_ckpt_file(const std::string& file_path, const std::s
 
 SDVersion ModelLoader::get_sd_version() {
     TensorStorage token_embedding_weight;
-    bool is_flux      = false;
-    bool is_schnell   = true;
-    bool is_lite      = true;
-    bool is_sdxl      = false;
-    bool is_sdxl_base = false;
-    bool is_sd3       = false;
+    bool is_flux         = false;
+    bool is_flux_schnell = false;
+    bool is_flux_lite    = false;
+
+    bool is_sd3          = false;
+    bool is_sd3_5_medium = false;
+    bool is_sd3_5_large  = false;
+    bool is_sdxl         = false;
+    bool is_sdxl_base    = false;
+    bool is_sd2          = false;
+    bool is_sd1          = false;
     for (auto& tensor_storage : tensor_storages) {
-        if (tensor_storage.name.find("model.diffusion_model.guidance_in.in_layer.weight") != std::string::npos) {
-            is_schnell = false;
-        }
-        if (tensor_storage.name.find("model.diffusion_model.double_blocks.") != std::string::npos) {
+        // FLUX conditions
+        if (tensor_storage.name.find("double_blocks.") != std::string::npos) {
             is_flux = true;
         }
-        if (tensor_storage.name.find("model.diffusion_model.double_blocks.8") != std::string::npos) {
-            is_lite = false;
+        if (tensor_storage.name.find("guidance_in.in_layer.weight") != std::string::npos) {
+            is_flux_lite    = true;
+            is_flux_schnell = false;
         }
-        if (tensor_storage.name.find("joint_blocks.0.x_block.attn2.ln_q.weight") != std::string::npos) {
-            return VERSION_SD3_5_2B;
+        if (tensor_storage.name.find("double_blocks.8.") != std::string::npos) {
+            is_flux_schnell = true;
+            is_flux_lite    = false;
         }
-        if (tensor_storage.name.find("joint_blocks.37.x_block.attn.ln_q.weight") != std::string::npos) {
-            return VERSION_SD3_5_8B;
-        }
-        if (tensor_storage.name.find("model.diffusion_model.joint_blocks.23.") != std::string::npos) {
+
+        // SD conditions
+        // sd3
+        if (tensor_storage.name.find("joint_blocks.23.") != std::string::npos) {
             is_sd3 = true;
+            if (ends_with(tensor_storage.name, "joint_blocks.23.x_block.attn.ln_q.weight")) {
+                is_sd3_5_medium = true;
+            }
         }
+        if (ends_with(tensor_storage.name, "joint_blocks.37.x_block.attn.ln_q.weight")) {
+            is_sd3_5_large = true;
+        }
+        // sdxl
         if (tensor_storage.name == "conditioner.embedders.0.model.token_embedding.weight" ||
             tensor_storage.name == "cond_stage_model.1.transformer.text_model.embeddings.token_embedding.weight") {
             if (tensor_storage.ne[0] == 1280) {
@@ -1498,43 +1510,55 @@ SDVersion ModelLoader::get_sd_version() {
             (tensor_storage.name == "cond_stage_model.transformer.text_model.embeddings.token_embedding.weight" && tensor_storage.ne[0] == 768)) {
             is_sdxl_base = true;
         }
-        if (tensor_storage.name.find("model.diffusion_model.input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
+        // svd
+        if (tensor_storage.name.find("input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
             return VERSION_SVD;
         }
-
+        // sd1, sd2
         if (tensor_storage.name == "cond_stage_model.transformer.text_model.embeddings.token_embedding.weight" ||
             tensor_storage.name == "cond_stage_model.model.token_embedding.weight" ||
             tensor_storage.name == "text_model.embeddings.token_embedding.weight" ||
             tensor_storage.name == "te.text_model.embeddings.token_embedding.weight" ||
             tensor_storage.name == "conditioner.embedders.0.model.token_embedding.weight" ||
             tensor_storage.name == "conditioner.embedders.0.transformer.text_model.embeddings.token_embedding.weight") {
-            token_embedding_weight = tensor_storage;
-            // break;
+            if (tensor_storage.ne[0] == 1024) {
+                is_sd2 = true;
+            } else if (tensor_storage.ne[0] == 768) {
+                is_sd1 = true;
+            }
         }
     }
+
     if (is_flux) {
-        if (is_schnell) {
-            GGML_ASSERT(!is_lite);
+        if (is_flux_schnell && !is_flux_lite) {
             return VERSION_FLUX_SCHNELL;
-        } else if (is_lite) {
+        } else if (is_flux_lite) {
             return VERSION_FLUX_LITE;
-        } else {
-            return VERSION_FLUX_DEV;
         }
+        return VERSION_FLUX_DEV;
     }
+
     if (is_sd3) {
+        if (is_sd3_5_large) {
+            return VERSION_SD3_5_8B;
+        }
+        if (is_sd3_5_medium) {
+            return VERSION_SD3_5_2B;
+        }
         return VERSION_SD3_2B;
     }
+
     if (is_sdxl && !is_sdxl_base) {
         return VERSION_SDXL_REFINER;
-    }
-    if (is_sdxl) {
+    } else if (is_sdxl) {
         return VERSION_SDXL;
     }
-    if (token_embedding_weight.ne[0] == 768) {
-        return VERSION_SD1;
-    } else if (token_embedding_weight.ne[0] == 1024) {
+
+    if (is_sd2) {
         return VERSION_SD2;
+    }
+    if (is_sd1) {
+        return VERSION_SD1;
     }
     return VERSION_COUNT;
 }
