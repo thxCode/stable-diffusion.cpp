@@ -209,6 +209,8 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                            float strength,
                            int64_t seed);
 
+SD_API int sd_get_version(sd_ctx_t* sd_ctx);
+
 typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
