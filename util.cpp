@@ -683,3 +683,27 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
 
     return res;
 }
+
+std::string path_dirname(const std::string& path) {
+    size_t pos = path.find_last_of('/');
+    if (pos != std::string::npos) {
+        return path.substr(0, pos);
+    }
+    pos = path.find_last_of('\\');
+    if (pos != std::string::npos) {
+        return path.substr(0, pos);
+    }
+    return path;
+}
+
+std::string path_basename(const std::string& path) {
+    size_t pos = path.find_last_of('/');
+    if (pos != std::string::npos) {
+        return path.substr(pos + 1);
+    }
+    pos = path.find_last_of('\\');
+    if (pos != std::string::npos) {
+        return path.substr(pos + 1);
+    }
+    return path;
+}
