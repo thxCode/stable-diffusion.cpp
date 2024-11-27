@@ -1657,6 +1657,15 @@ std::string ModelLoader::load_t5_tokenizer_json() {
     return json_str;
 }
 
+bool ModelLoader::has_prefix_tensors(const std::string& prefix) {
+    for (auto& tensor_storage : tensor_storages) {
+        if (tensor_storage.name.find(prefix) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<TensorStorage> remove_duplicates(const std::vector<TensorStorage>& vec) {
     std::vector<TensorStorage> res;
     std::unordered_map<std::string, size_t> name_to_index_map;

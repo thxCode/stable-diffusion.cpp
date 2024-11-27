@@ -43,6 +43,8 @@ struct Conditioner {
 // ldm.modules.encoders.modules.FrozenCLIPEmbedder
 // Ref: https://github.com/AUTOMATIC1111/stable-diffusion-webui/blob/cad87bf4e3e0b0a759afa94e933527c3123d59bc/modules/sd_hijack_clip.py#L283
 struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
+    bool compvis_compatiblity_clip_l;
+    bool compvis_compatiblity_clip_g;
     SDVersion version    = VERSION_SD1;
     PMVersion pm_version = PM_VERSION_1;
     CLIPTokenizer tokenizer;
@@ -59,10 +61,18 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
     FrozenCLIPEmbedderWithCustomWords(ggml_backend_t backend,
                                       ggml_type wtype,
                                       const std::string& embd_dir,
-                                      SDVersion version = VERSION_SD1,
-                                      PMVersion pv      = PM_VERSION_1,
-                                      int clip_skip     = -1)
-        : version(version), pm_version(pv), tokenizer(version == VERSION_SD2 ? 0 : 49407), embd_dir(embd_dir), wtype(wtype) {
+                                      SDVersion version                = VERSION_SD1,
+                                      PMVersion pv                     = PM_VERSION_1,
+                                      bool compvis_compatiblity_clip_l = false,
+                                      bool compvis_compatiblity_clip_g = false,
+                                      int clip_skip                    = -1)
+        : version(version),
+          pm_version(pv),
+          tokenizer(version == VERSION_SD2 ? 0 : 49407),
+          embd_dir(embd_dir),
+          wtype(wtype),
+          compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
+          compvis_compatiblity_clip_g(compvis_compatiblity_clip_g) {
         if (clip_skip <= 0) {
             clip_skip = 1;
             if (version == VERSION_SD2 || version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
@@ -92,10 +102,18 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
         if (version != VERSION_SDXL_REFINER) {
-            text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+            if (compvis_compatiblity_clip_l) {
+                text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+            } else {
+                text_model->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
+            }
         }
         if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
-            text_model2->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
+            if (compvis_compatiblity_clip_g) {
+                text_model2->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
+            } else {
+                text_model2->get_param_tensors(tensors, "text_encoders.clip_g.transformer.text_model");
+            }
         }
     }
 
@@ -653,6 +671,9 @@ struct FrozenCLIPVisionEmbedder : public GGMLRunner {
 };
 
 struct SD3CLIPEmbedder : public Conditioner {
+    bool compvis_compatiblity_clip_l;
+    bool compvis_compatiblity_clip_g;
+    bool compvis_compatiblity_t5xxl;
     ggml_type wtype;
     CLIPTokenizer clip_l_tokenizer;
     CLIPTokenizer clip_g_tokenizer;
@@ -663,8 +684,15 @@ struct SD3CLIPEmbedder : public Conditioner {
 
     SD3CLIPEmbedder(ggml_backend_t backend,
                     ggml_type wtype,
-                    int clip_skip = -1)
-        : wtype(wtype), clip_g_tokenizer(0) {
+                    bool compvis_compatiblity_clip_l = false,
+                    bool compvis_compatiblity_clip_g = false,
+                    bool compvis_compatiblity_t5xxl  = false,
+                    int clip_skip                    = -1)
+        : wtype(wtype),
+          clip_g_tokenizer(0),
+          compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
+          compvis_compatiblity_clip_g(compvis_compatiblity_clip_g),
+          compvis_compatiblity_t5xxl(compvis_compatiblity_t5xxl) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
@@ -679,9 +707,21 @@ struct SD3CLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
-        clip_g->get_param_tensors(tensors, "text_encoders.clip_g.transformer.text_model");
-        t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        if (compvis_compatiblity_clip_l) {
+            clip_l->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+        } else {
+            clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
+        }
+        if (compvis_compatiblity_clip_g) {
+            clip_g->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
+        } else {
+            clip_g->get_param_tensors(tensors, "text_encoders.clip_g.transformer.text_model");
+        }
+        if (compvis_compatiblity_t5xxl) {
+            t5->get_param_tensors(tensors, "cond_stage_model.2.transformer");
+        } else {
+            t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        }
     }
 
     void alloc_params_buffer() {
@@ -1000,6 +1040,8 @@ struct SD3CLIPEmbedder : public Conditioner {
 };
 
 struct FluxCLIPEmbedder : public Conditioner {
+    bool compvis_compatiblity_clip_l;
+    bool compvis_compatiblity_t5xxl;
     ggml_type wtype;
     CLIPTokenizer clip_l_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
@@ -1008,8 +1050,12 @@ struct FluxCLIPEmbedder : public Conditioner {
 
     FluxCLIPEmbedder(ggml_backend_t backend,
                      ggml_type wtype,
-                     int clip_skip = -1)
-        : wtype(wtype) {
+                     bool compvis_compatiblity_clip_l = false,
+                     bool compvis_compatiblity_t5xxl  = false,
+                     int clip_skip                    = -1)
+        : wtype(wtype),
+          compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
+          compvis_compatiblity_t5xxl(compvis_compatiblity_t5xxl) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
@@ -1022,8 +1068,16 @@ struct FluxCLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
-        t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        if (compvis_compatiblity_clip_l) {
+            clip_l->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+        } else {
+            clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
+        }
+        if (compvis_compatiblity_t5xxl) {
+            t5->get_param_tensors(tensors, "cond_stage_model.1.transformer");
+        } else {
+            t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        }
     }
 
     void alloc_params_buffer() {

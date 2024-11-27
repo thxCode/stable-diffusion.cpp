@@ -520,15 +520,20 @@ public:
 };
 
 struct AutoEncoderKL : public GGMLRunner {
+    bool compvis_compatiblity_vae;
     bool decode_only = true;
     AutoencodingEngine ae;
 
     AutoEncoderKL(ggml_backend_t backend,
                   ggml_type wtype,
-                  bool decode_only       = false,
-                  bool use_video_decoder = false,
-                  SDVersion version      = VERSION_SD1)
-        : decode_only(decode_only), ae(decode_only, use_video_decoder, version), GGMLRunner(backend, wtype) {
+                  bool decode_only              = false,
+                  bool use_video_decoder        = false,
+                  SDVersion version             = VERSION_SD1,
+                  bool compvis_compatiblity_vae = false)
+        : decode_only(decode_only),
+          ae(decode_only, use_video_decoder, version),
+          GGMLRunner(backend, wtype),
+          compvis_compatiblity_vae(compvis_compatiblity_vae) {
         ae.init(params_ctx, wtype);
     }
 
@@ -536,8 +541,12 @@ struct AutoEncoderKL : public GGMLRunner {
         return "vae";
     }
 
-    void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors, const std::string prefix) {
-        ae.get_param_tensors(tensors, prefix);
+    void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
+        if (compvis_compatiblity_vae) {
+            ae.get_param_tensors(tensors, "first_stage_model");
+        } else {
+            ae.get_param_tensors(tensors, "vae");
+        }
     }
 
     struct ggml_cgraph* build_graph(struct ggml_tensor* z, bool decode_graph) {
