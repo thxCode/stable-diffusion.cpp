@@ -1935,6 +1935,7 @@ sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
                                           int width,
                                           int height,
                                           sample_method_t sample_method,
+                                          schedule_t schedule,
                                           const std::vector<float>& sigmas,
                                           std::shared_ptr<RNG>& rng,
                                           const sd_image_t* control_cond,
@@ -1968,7 +1969,7 @@ sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
     parameters_str += "Model: " + std::string(model_version_to_str[sd_ctx->sd->version]) + ", ";
     parameters_str += "RNG: " + std::string(rng_types_argument_str[sd_ctx->sd->rng_type]) + ", ";
     parameters_str += "Sampler: " + std::string(sample_methods_argument_str[sample_method]);
-    if (std::dynamic_pointer_cast<KarrasSchedule>(sd_ctx->sd->denoiser->schedule) != NULL) {
+    if (schedule == KARRAS) {
         parameters_str += " karras";
     }
 
@@ -2075,6 +2076,42 @@ sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
     };
 }
 
+std::vector<float> get_sigmas(const sd_ctx_t* sd_ctx, const enum schedule_t schedule, uint32_t n) {
+    std::shared_ptr<SigmaSchedule> ss;
+    switch (schedule) {
+        case DISCRETE: {
+            ss = std::make_shared<DiscreteSchedule>();
+            break;
+        }
+        case KARRAS: {
+            ss = std::make_shared<KarrasSchedule>();
+            break;
+        }
+        case EXPONENTIAL: {
+            ss = std::make_shared<ExponentialSchedule>();
+            break;
+        }
+        case AYS: {
+            ss          = std::make_shared<AYSSchedule>();
+            ss->version = sd_ctx->sd->version;
+            break;
+        }
+        case GITS: {
+            ss          = std::make_shared<GITSSchedule>();
+            ss->version = sd_ctx->sd->version;
+            break;
+        }
+        default: {
+            ss = std::make_shared<DiscreteSchedule>();
+            break;
+        }
+    }
+
+    auto denoiser         = sd_ctx->sd->denoiser.get();
+    auto bound_t_to_sigma = std::bind(&Denoiser::t_to_sigma, denoiser, std::placeholders::_1);
+    return ss->get_sigmas(n, denoiser->sigma_min(), denoiser->sigma_max(), bound_t_to_sigma);
+}
+
 sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
                                      const char* prompt_c_str,
                                      const char* negative_prompt_c_str,
@@ -2084,6 +2121,7 @@ sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
                                      int width,
                                      int height,
                                      enum sample_method_t sample_method,
+                                     enum schedule_t schedule,
                                      int sample_steps,
                                      int64_t seed,
                                      const sd_image_t* control_cond,
@@ -2115,7 +2153,7 @@ sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
         return nullptr;
     }
 
-    std::vector<float> sigmas = sd_ctx->sd->denoiser->get_sigmas(sample_steps);
+    std::vector<float> sigmas = get_sigmas(sd_ctx, schedule, sample_steps);
 
     int C = 4;
     if (sd_version_is_sd3(sd_ctx->sd->version)) {
@@ -2146,6 +2184,7 @@ sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
                                width,
                                height,
                                sample_method,
+                               schedule,
                                sigmas,
                                rng,
                                control_cond,
@@ -2166,6 +2205,7 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
                                      int width,
                                      int height,
                                      sample_method_t sample_method,
+                                     enum schedule_t schedule,
                                      int sample_steps,
                                      float strength,
                                      int64_t seed,
@@ -2215,7 +2255,7 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
     size_t t1 = ggml_time_ms();
     LOG_INFO("encode_first_stage completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
 
-    std::vector<float> sigmas = sd_ctx->sd->denoiser->get_sigmas(sample_steps);
+    std::vector<float> sigmas = get_sigmas(sd_ctx, schedule, sample_steps);
     size_t t_enc              = static_cast<size_t>(sample_steps * strength);
     LOG_INFO("target t_enc is %zu steps", t_enc);
     std::vector<float> sigma_sched;
@@ -2233,6 +2273,7 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
                                width,
                                height,
                                sample_method,
+                               schedule,
                                sigma_sched,
                                rng,
                                control_cond,
