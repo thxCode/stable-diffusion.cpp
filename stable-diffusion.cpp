@@ -116,7 +116,9 @@ public:
     ggml_backend_t control_net_backend = NULL;
     ggml_backend_t vae_backend         = NULL;
     ggml_type model_wtype              = GGML_TYPE_COUNT;
-    ggml_type conditioner_wtype        = GGML_TYPE_COUNT;
+    ggml_type clip_l_wtype             = GGML_TYPE_COUNT;
+    ggml_type clip_g_wtype             = GGML_TYPE_COUNT;
+    ggml_type t5xxl_wtype              = GGML_TYPE_COUNT;
     ggml_type diffusion_model_wtype    = GGML_TYPE_COUNT;
     ggml_type vae_wtype                = GGML_TYPE_COUNT;
 
@@ -305,32 +307,79 @@ public:
                 model_wtype = GGML_TYPE_F32;
                 LOG_WARN("can not get mode wtype frome weight, use f32");
             }
-            conditioner_wtype = model_loader.get_conditioner_wtype();
-            if (conditioner_wtype == GGML_TYPE_COUNT) {
-                conditioner_wtype = wtype;
+            switch (version) {
+                case VERSION_SVD:
+                case VERSION_SD1:
+                case VERSION_SD2:
+                case VERSION_SDXL:
+                case VERSION_SDXL_REFINER: {
+                    if (version != VERSION_SDXL_REFINER) {
+                        clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                        if (clip_l_wtype == GGML_TYPE_COUNT) {
+                            clip_l_wtype = wtype;
+                        }
+                    }
+                    if (version == VERSION_SDXL_REFINER || version == VERSION_SDXL) {
+                        clip_g_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.clip_g."});
+                        if (clip_g_wtype == GGML_TYPE_COUNT) {
+                            clip_g_wtype = wtype;
+                        }
+                    }
+                    break;
+                }
+                case VERSION_SD3_2B:
+                case VERSION_SD3_5_2B:
+                case VERSION_SD3_5_8B: {
+                    clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                    if (clip_l_wtype == GGML_TYPE_COUNT) {
+                        clip_l_wtype = wtype;
+                    }
+                    clip_g_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.clip_g."});
+                    if (clip_g_wtype == GGML_TYPE_COUNT) {
+                        clip_g_wtype = wtype;
+                    }
+                    t5xxl_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.2.", "text_encoders.t5xxl."});
+                    if (t5xxl_wtype == GGML_TYPE_COUNT) {
+                        t5xxl_wtype = wtype;
+                    }
+                    break;
+                }
+                case VERSION_FLUX_LITE:
+                case VERSION_FLUX_DEV:
+                case VERSION_FLUX_SCHNELL: {
+                    clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                    if (clip_l_wtype == GGML_TYPE_COUNT) {
+                        clip_l_wtype = wtype;
+                    }
+                    t5xxl_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.t5xxl."});
+                    if (t5xxl_wtype == GGML_TYPE_COUNT) {
+                        t5xxl_wtype = wtype;
+                    }
+                    break;
+                }
             }
+
             diffusion_model_wtype = model_loader.get_diffusion_model_wtype();
             if (diffusion_model_wtype == GGML_TYPE_COUNT) {
                 diffusion_model_wtype = wtype;
             }
             vae_wtype = model_loader.get_vae_wtype();
-
             if (vae_wtype == GGML_TYPE_COUNT) {
                 vae_wtype = wtype;
             }
         } else {
             model_wtype           = wtype;
-            conditioner_wtype     = wtype;
+            clip_l_wtype          = wtype;
+            clip_g_wtype          = wtype;
+            t5xxl_wtype           = wtype;
             diffusion_model_wtype = wtype;
             vae_wtype             = wtype;
         }
 
-        if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
-            vae_wtype = GGML_TYPE_F32;
-        }
-
         LOG_INFO("Weight type:                 %s", ggml_type_name(model_wtype));
-        LOG_INFO("Conditioner weight type:     %s", ggml_type_name(conditioner_wtype));
+        LOG_INFO("CLIP_L weight type:          %s", ggml_type_name(clip_l_wtype));
+        LOG_INFO("CLIP_G weight type:          %s", ggml_type_name(clip_g_wtype));
+        LOG_INFO("T5XXL weight type:           %s", ggml_type_name(t5xxl_wtype));
         LOG_INFO("Diffusion model weight type: %s", ggml_type_name(diffusion_model_wtype));
         LOG_INFO("VAE weight type:             %s", ggml_type_name(vae_wtype));
 
@@ -351,7 +400,7 @@ public:
         auto cc_vae    = model_loader.has_prefix_tensors("first_stage_model.") && !model_loader.has_prefix_tensors("vae.");
 
         if (version == VERSION_SVD) {
-            clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(backend, conditioner_wtype);
+            clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(backend, clip_l_wtype);
             clip_vision->alloc_params_buffer();
             clip_vision->get_param_tensors(tensors);
 
@@ -364,15 +413,7 @@ public:
             first_stage_model->alloc_params_buffer();
             first_stage_model->get_param_tensors(tensors);
         } else {
-            clip_backend   = backend;
-            bool use_t5xxl = false;
-            if (sd_version_is_dit(version)) {
-                use_t5xxl = true;
-            }
-            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != diffusion_model_wtype) {
-                clip_on_cpu = true;
-                LOG_INFO("set clip_on_cpu to true");
-            }
+            clip_backend = backend;
             if (clip_on_cpu && !ggml_backend_is_cpu(backend)) {
                 LOG_INFO("CLIP: Using CPU backend");
                 clip_backend = ggml_backend_cpu_init();
@@ -384,16 +425,16 @@ public:
                 if (diffusion_flash_attn) {
                     LOG_WARN("flash attention in this diffusion model is currently unsupported!");
                 }
-                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, conditioner_wtype, cc_clip_l, cc_clip_g, cc_t5xxl);
+                cond_stage_model = std::make_shared<SD3CLIPEmbedder>(clip_backend, clip_l_wtype, clip_g_wtype, t5xxl_wtype, cc_clip_l, cc_clip_g, cc_t5xxl);
                 diffusion_model  = std::make_shared<MMDiTModel>(backend, diffusion_model_wtype, version);
             } else if (sd_version_is_flux(version)) {
-                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, conditioner_wtype, cc_clip_l, cc_t5xxl);
+                cond_stage_model = std::make_shared<FluxCLIPEmbedder>(clip_backend, clip_l_wtype, t5xxl_wtype, cc_clip_l, cc_t5xxl);
                 diffusion_model  = std::make_shared<FluxModel>(backend, diffusion_model_wtype, version, diffusion_flash_attn);
             } else {
                 if (id_embeddings_path.find("v2") != std::string::npos) {
-                    cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, conditioner_wtype, embeddings_path, version, PM_VERSION_2, cc_clip_l, cc_clip_g);
+                    cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, clip_l_wtype, clip_g_wtype, embeddings_path, version, PM_VERSION_2, cc_clip_l, cc_clip_g);
                 } else {
-                    cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, conditioner_wtype, embeddings_path, version, PM_VERSION_1, cc_clip_l, cc_clip_g);
+                    cond_stage_model = std::make_shared<FrozenCLIPEmbedderWithCustomWords>(clip_backend, clip_l_wtype, clip_g_wtype, embeddings_path, version, PM_VERSION_1, cc_clip_l, cc_clip_g);
                 }
                 diffusion_model = std::make_shared<UNetModel>(backend, diffusion_model_wtype, version, diffusion_flash_attn);
             }

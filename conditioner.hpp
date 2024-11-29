@@ -48,7 +48,6 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
     SDVersion version    = VERSION_SD1;
     PMVersion pm_version = PM_VERSION_1;
     CLIPTokenizer tokenizer;
-    ggml_type wtype;
     std::shared_ptr<CLIPTextModelRunner> text_model;
     std::shared_ptr<CLIPTextModelRunner> text_model2;
 
@@ -59,7 +58,8 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
     std::vector<std::string> readed_embeddings;
 
     FrozenCLIPEmbedderWithCustomWords(ggml_backend_t backend,
-                                      ggml_type wtype,
+                                      ggml_type clip_l_wtype,
+                                      ggml_type clip_g_wtype,
                                       const std::string& embd_dir,
                                       SDVersion version                = VERSION_SD1,
                                       PMVersion pv                     = PM_VERSION_1,
@@ -70,7 +70,6 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
           pm_version(pv),
           tokenizer(version == VERSION_SD2 ? 0 : 49407),
           embd_dir(embd_dir),
-          wtype(wtype),
           compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
           compvis_compatiblity_clip_g(compvis_compatiblity_clip_g) {
         if (clip_skip <= 0) {
@@ -80,14 +79,14 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
             }
         }
         if (version == VERSION_SD1) {
-            text_model = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip);
+            text_model = std::make_shared<CLIPTextModelRunner>(backend, clip_l_wtype, OPENAI_CLIP_VIT_L_14, clip_skip);
         } else if (version == VERSION_SD2) {
-            text_model = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_H_14, clip_skip);
+            text_model = std::make_shared<CLIPTextModelRunner>(backend, clip_l_wtype, OPEN_CLIP_VIT_H_14, clip_skip);
         } else if (version == VERSION_SDXL) {
-            text_model  = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip, false);
-            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+            text_model  = std::make_shared<CLIPTextModelRunner>(backend, clip_l_wtype, OPENAI_CLIP_VIT_L_14, clip_skip, false);
+            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, clip_g_wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         } else if (version == VERSION_SDXL_REFINER) {
-            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, clip_g_wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         }
     }
 
@@ -174,14 +173,14 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                 LOG_DEBUG("embedding wrong hidden size, got %i, expected %i", tensor_storage.ne[0], hidden_size);
                 return false;
             }
-            embd        = ggml_new_tensor_2d(embd_ctx, wtype, hidden_size, tensor_storage.n_dims > 1 ? tensor_storage.ne[1] : 1);
+            embd        = ggml_new_tensor_2d(embd_ctx, tensor_storage.type, hidden_size, tensor_storage.n_dims > 1 ? tensor_storage.ne[1] : 1);
             *dst_tensor = embd;
             return true;
         };
         model_loader.load_tensors(on_load, NULL);
         readed_embeddings.push_back(embd_name);
         token_embed_custom.resize(token_embed_custom.size() + ggml_nbytes(embd));
-        memcpy((void*)(token_embed_custom.data() + num_custom_embeddings * hidden_size * ggml_type_size(wtype)),
+        memcpy((void*)(token_embed_custom.data() + num_custom_embeddings * hidden_size * ggml_type_size(embd->type)),
                embd->data,
                ggml_nbytes(embd));
         for (int i = 0; i < embd->ne[1]; i++) {
@@ -674,7 +673,6 @@ struct SD3CLIPEmbedder : public Conditioner {
     bool compvis_compatiblity_clip_l;
     bool compvis_compatiblity_clip_g;
     bool compvis_compatiblity_t5xxl;
-    ggml_type wtype;
     CLIPTokenizer clip_l_tokenizer;
     CLIPTokenizer clip_g_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
@@ -683,22 +681,23 @@ struct SD3CLIPEmbedder : public Conditioner {
     std::shared_ptr<T5Runner> t5;
 
     SD3CLIPEmbedder(ggml_backend_t backend,
-                    ggml_type wtype,
+                    ggml_type clip_l_wtype,
+                    ggml_type clip_g_wtype,
+                    ggml_type t5xxl_wtype,
                     bool compvis_compatiblity_clip_l = false,
                     bool compvis_compatiblity_clip_g = false,
                     bool compvis_compatiblity_t5xxl  = false,
                     int clip_skip                    = -1)
-        : wtype(wtype),
-          clip_g_tokenizer(0),
+        : clip_g_tokenizer(0),
           compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
           compvis_compatiblity_clip_g(compvis_compatiblity_clip_g),
           compvis_compatiblity_t5xxl(compvis_compatiblity_t5xxl) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
-        clip_l = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip, false);
-        clip_g = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
-        t5     = std::make_shared<T5Runner>(backend, wtype);
+        clip_l = std::make_shared<CLIPTextModelRunner>(backend, clip_l_wtype, OPENAI_CLIP_VIT_L_14, clip_skip, false);
+        clip_g = std::make_shared<CLIPTextModelRunner>(backend, clip_g_wtype, OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+        t5     = std::make_shared<T5Runner>(backend, t5xxl_wtype);
     }
 
     void set_clip_skip(int clip_skip) {
@@ -1042,25 +1041,24 @@ struct SD3CLIPEmbedder : public Conditioner {
 struct FluxCLIPEmbedder : public Conditioner {
     bool compvis_compatiblity_clip_l;
     bool compvis_compatiblity_t5xxl;
-    ggml_type wtype;
     CLIPTokenizer clip_l_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
     std::shared_ptr<CLIPTextModelRunner> clip_l;
     std::shared_ptr<T5Runner> t5;
 
     FluxCLIPEmbedder(ggml_backend_t backend,
-                     ggml_type wtype,
+                     ggml_type clip_l_wtype,
+                     ggml_type t5xxl_wtype,
                      bool compvis_compatiblity_clip_l = false,
                      bool compvis_compatiblity_t5xxl  = false,
                      int clip_skip                    = -1)
-        : wtype(wtype),
-          compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
+        : compvis_compatiblity_clip_l(compvis_compatiblity_clip_l),
           compvis_compatiblity_t5xxl(compvis_compatiblity_t5xxl) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
-        clip_l = std::make_shared<CLIPTextModelRunner>(backend, wtype, OPENAI_CLIP_VIT_L_14, clip_skip, true);
-        t5     = std::make_shared<T5Runner>(backend, wtype);
+        clip_l = std::make_shared<CLIPTextModelRunner>(backend, clip_l_wtype, OPENAI_CLIP_VIT_L_14, clip_skip, true);
+        t5     = std::make_shared<T5Runner>(backend, t5xxl_wtype);
     }
 
     void set_clip_skip(int clip_skip) {

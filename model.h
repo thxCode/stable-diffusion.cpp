@@ -183,7 +183,7 @@ public:
     bool init_from_safetensors_file(const std::string& dir_path, const std::string& file_prefix, ggml_type type, const std::string& prefix = "");
     SDVersion get_sd_version();
     ggml_type get_sd_wtype();
-    ggml_type get_conditioner_wtype();
+    ggml_type get_conditioner_wtype(std::vector<std::string> prefixes = {});
     ggml_type get_diffusion_model_wtype();
     ggml_type get_vae_wtype();
     bool load_tensors(on_new_tensor_cb_t on_new_tensor_cb, ggml_backend_t backend);
