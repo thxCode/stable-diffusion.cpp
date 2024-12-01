@@ -1985,6 +1985,15 @@ int64_t ModelLoader::get_params_mem_size(ggml_backend_t backend, ggml_type type)
     return mem_size;
 }
 
+bool ModelLoader::has_prefix_tensors(const std::string& prefix) {
+    for (auto& tensor_storage : tensor_storages) {
+        if (tensor_storage.name.find(prefix) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool convert(const char* input_path, const char* vae_path, const char* output_path, sd_type_t output_type) {
     ModelLoader model_loader;
 

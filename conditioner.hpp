@@ -43,6 +43,7 @@ struct Conditioner {
 // ldm.modules.encoders.modules.FrozenCLIPEmbedder
 // Ref: https://github.com/AUTOMATIC1111/stable-diffusion-webui/blob/cad87bf4e3e0b0a759afa94e933527c3123d59bc/modules/sd_hijack_clip.py#L283
 struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
+    bool cc_clip_l, cc_clip_g;
     SDVersion version    = VERSION_SD1;
     PMVersion pm_version = PM_VERSION_1;
     CLIPTokenizer tokenizer;
@@ -60,7 +61,9 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                       const std::string& embd_dir,
                                       SDVersion version = VERSION_SD1,
                                       PMVersion pv      = PM_VERSION_1,
-                                      int clip_skip     = -1)
+                                      int clip_skip     = -1,
+                                      bool cc_clip_l    = false,
+                                      bool cc_clip_g    = false)
         : version(version), pm_version(pv), tokenizer(version == VERSION_SD2 ? 0 : 49407), embd_dir(embd_dir) {
         if (clip_skip <= 0) {
             clip_skip = 1;
@@ -68,16 +71,26 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                 clip_skip = 2;
             }
         }
+        this->cc_clip_l = cc_clip_l;
+        this->cc_clip_g = cc_clip_g;
         if (version == VERSION_SD1) {
-            text_model = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip);
+            text_model = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_l_prefix(), OPENAI_CLIP_VIT_L_14, clip_skip);
         } else if (version == VERSION_SD2) {
-            text_model = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPEN_CLIP_VIT_H_14, clip_skip);
+            text_model = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_l_prefix(), OPEN_CLIP_VIT_H_14, clip_skip);
         } else if (version == VERSION_SDXL) {
-            text_model  = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip, false);
-            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.1.transformer.text_model", OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+            text_model  = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_l_prefix(), OPENAI_CLIP_VIT_L_14, clip_skip, false);
+            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_g_prefix(), OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         } else if (version == VERSION_SDXL_REFINER) {
-            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.1.transformer.text_model", OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+            text_model2 = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_g_prefix(), OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         }
+    }
+
+    std::string clip_l_prefix() {
+        return cc_clip_l ? "cond_stage_model.transformer.text_model" : "text_encoders.clip_l.transformer.text_model";
+    }
+
+    std::string clip_g_prefix() {
+        return cc_clip_g ? "cond_stage_model.1.transformer.text_model" : "text_encoders.clip_g.transformer.text_model";
     }
 
     void set_clip_skip(int clip_skip) {
@@ -91,10 +104,10 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
         if (text_model) {
-            text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+            text_model->get_param_tensors(tensors, clip_l_prefix());
         }
         if (text_model2) {
-            text_model2->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
+            text_model2->get_param_tensors(tensors, clip_g_prefix());
         }
     }
 
@@ -603,11 +616,13 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
 };
 
 struct FrozenCLIPVisionEmbedder : public GGMLRunner {
+    bool cc_clip_l;
     CLIPVisionModelProjection vision_model;
 
-    FrozenCLIPVisionEmbedder(ggml_backend_t backend, std::map<std::string, enum ggml_type>& tensor_types)
+    FrozenCLIPVisionEmbedder(ggml_backend_t backend, std::map<std::string, enum ggml_type>& tensor_types, bool cc_clip_l = false)
         : vision_model(OPEN_CLIP_VIT_H_14, true), GGMLRunner(backend) {
-        vision_model.init(params_ctx, tensor_types, "cond_stage_model.transformer");
+        this->cc_clip_l = cc_clip_l;
+        vision_model.init(params_ctx, tensor_types, cc_clip_l ? "cond_stage_model.transformer" : "text_encoders.clip_l.transformer");
     }
 
     std::string get_desc() {
@@ -615,7 +630,7 @@ struct FrozenCLIPVisionEmbedder : public GGMLRunner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        vision_model.get_param_tensors(tensors, "cond_stage_model.transformer");
+        vision_model.get_param_tensors(tensors, cc_clip_l ? "cond_stage_model.transformer" : "text_encoders.clip_l.transformer");
     }
 
     struct ggml_cgraph* build_graph(struct ggml_tensor* pixel_values) {
@@ -642,6 +657,7 @@ struct FrozenCLIPVisionEmbedder : public GGMLRunner {
 };
 
 struct SD3CLIPEmbedder : public Conditioner {
+    bool cc_clip_l, cc_clip_g, cc_t5xxl;
     CLIPTokenizer clip_l_tokenizer;
     CLIPTokenizer clip_g_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
@@ -651,14 +667,32 @@ struct SD3CLIPEmbedder : public Conditioner {
 
     SD3CLIPEmbedder(ggml_backend_t backend,
                     std::map<std::string, enum ggml_type>& tensor_types,
-                    int clip_skip = -1)
+                    int clip_skip  = -1,
+                    bool cc_clip_l = false,
+                    bool cc_clip_g = false,
+                    bool cc_t5xxl  = false)
         : clip_g_tokenizer(0) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
-        clip_l = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "text_encoders.clip_l.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip, false);
-        clip_g = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "text_encoders.clip_g.transformer.text_model", OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
-        t5     = std::make_shared<T5Runner>(backend, tensor_types, "text_encoders.t5xxl.transformer");
+        this->cc_clip_l = cc_clip_l;
+        this->cc_clip_g = cc_clip_g;
+        this->cc_t5xxl  = cc_t5xxl;
+        clip_l          = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_l_prefix(), OPENAI_CLIP_VIT_L_14, clip_skip, false);
+        clip_g          = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_g_prefix(), OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
+        t5              = std::make_shared<T5Runner>(backend, tensor_types, t5xxl_prefix());
+    }
+
+    std::string clip_l_prefix() {
+        return cc_clip_l ? "cond_stage_model.transformer.text_model" : "text_encoders.clip_l.transformer.text_model";
+    }
+
+    std::string clip_g_prefix() {
+        return cc_clip_g ? "cond_stage_model.1.transformer.text_model" : "text_encoders.clip_g.transformer.text_model";
+    }
+
+    std::string t5xxl_prefix() {
+        return cc_t5xxl ? "cond_stage_model.2.transformer" : "text_encoders.t5xxl.transformer";
     }
 
     void set_clip_skip(int clip_skip) {
@@ -667,9 +701,9 @@ struct SD3CLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
-        clip_g->get_param_tensors(tensors, "text_encoders.clip_g.transformer.text_model");
-        t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        clip_l->get_param_tensors(tensors, clip_l_prefix());
+        clip_g->get_param_tensors(tensors, clip_g_prefix());
+        t5->get_param_tensors(tensors, t5xxl_prefix());
     }
 
     void alloc_params_buffer() {
@@ -988,6 +1022,7 @@ struct SD3CLIPEmbedder : public Conditioner {
 };
 
 struct FluxCLIPEmbedder : public Conditioner {
+    bool cc_clip_l, cc_t5xxl;
     CLIPTokenizer clip_l_tokenizer;
     T5UniGramTokenizer t5_tokenizer;
     std::shared_ptr<CLIPTextModelRunner> clip_l;
@@ -995,12 +1030,24 @@ struct FluxCLIPEmbedder : public Conditioner {
 
     FluxCLIPEmbedder(ggml_backend_t backend,
                      std::map<std::string, enum ggml_type>& tensor_types,
-                     int clip_skip = -1) {
+                     int clip_skip  = -1,
+                     bool cc_clip_l = false,
+                     bool cc_t5xxl  = false) {
         if (clip_skip <= 0) {
             clip_skip = 2;
         }
-        clip_l = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "text_encoders.clip_l.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip, true);
-        t5     = std::make_shared<T5Runner>(backend, tensor_types, "text_encoders.t5xxl.transformer");
+        this->cc_clip_l = cc_clip_l;
+        this->cc_t5xxl  = cc_t5xxl;
+        clip_l          = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, clip_l_prefix(), OPENAI_CLIP_VIT_L_14, clip_skip, true);
+        t5              = std::make_shared<T5Runner>(backend, tensor_types, t5xxl_prefix());
+    }
+
+    std::string clip_l_prefix() {
+        return cc_clip_l ? "cond_stage_model.transformer.text_model" : "text_encoders.clip_l.transformer.text_model";
+    }
+
+    std::string t5xxl_prefix() {
+        return cc_t5xxl ? "cond_stage_model.1.transformer" : "text_encoders.t5xxl.transformer";
     }
 
     void set_clip_skip(int clip_skip) {
@@ -1008,8 +1055,8 @@ struct FluxCLIPEmbedder : public Conditioner {
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        clip_l->get_param_tensors(tensors, "text_encoders.clip_l.transformer.text_model");
-        t5->get_param_tensors(tensors, "text_encoders.t5xxl.transformer");
+        clip_l->get_param_tensors(tensors, clip_l_prefix());
+        t5->get_param_tensors(tensors, t5xxl_prefix());
     }
 
     void alloc_params_buffer() {

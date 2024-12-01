@@ -184,17 +184,23 @@ public:
 };
 
 struct TinyAutoEncoder : public GGMLRunner {
+    bool cc_vae;
     TAESD taesd;
     bool decode_only = false;
 
     TinyAutoEncoder(ggml_backend_t backend,
                     std::map<std::string, enum ggml_type>& tensor_types,
-                    const std::string prefix,
-                    bool decoder_only = true)
+                    bool decoder_only = true,
+                    bool cc_vae       = false)
         : decode_only(decoder_only),
           taesd(decode_only),
           GGMLRunner(backend) {
-        taesd.init(params_ctx, tensor_types, prefix);
+        this->cc_vae = cc_vae;
+        taesd.init(params_ctx, tensor_types, vae_prefix());
+    }
+
+    std::string vae_prefix() {
+        return cc_vae ? "first_stage_model" : "";
     }
 
     std::string get_desc() {

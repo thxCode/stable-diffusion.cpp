@@ -521,25 +521,31 @@ public:
 };
 
 struct AutoEncoderKL : public GGMLRunner {
+    bool cc_vae;
     bool decode_only = true;
     AutoencodingEngine ae;
 
     AutoEncoderKL(ggml_backend_t backend,
                   std::map<std::string, enum ggml_type>& tensor_types,
-                  const std::string prefix,
                   bool decode_only       = false,
                   bool use_video_decoder = false,
-                  SDVersion version      = VERSION_SD1)
+                  SDVersion version      = VERSION_SD1,
+                  bool cc_vae            = false)
         : decode_only(decode_only), ae(decode_only, use_video_decoder, version), GGMLRunner(backend) {
-        ae.init(params_ctx, tensor_types, prefix);
+        this->cc_vae = cc_vae;
+        ae.init(params_ctx, tensor_types, vae_prefix());
+    }
+
+    std::string vae_prefix() {
+        return cc_vae ? "first_stage_model" : "";
     }
 
     std::string get_desc() {
         return "vae";
     }
 
-    void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors, const std::string prefix) {
-        ae.get_param_tensors(tensors, prefix);
+    void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
+        ae.get_param_tensors(tensors, vae_prefix());
     }
 
     struct ggml_cgraph* build_graph(struct ggml_tensor* z, bool decode_graph) {
