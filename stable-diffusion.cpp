@@ -710,17 +710,25 @@ public:
     }
 
     void apply_lora(const std::string& lora_name, float multiplier) {
-        int64_t t0                 = ggml_time_ms();
-        std::string st_file_path   = path_join(lora_model_dir, lora_name + ".safetensors");
-        std::string ckpt_file_path = path_join(lora_model_dir, lora_name + ".ckpt");
+        int64_t t0 = ggml_time_ms();
+
         std::string file_path;
-        if (file_exists(st_file_path)) {
-            file_path = st_file_path;
-        } else if (file_exists(ckpt_file_path)) {
-            file_path = ckpt_file_path;
+        if (!lora_model_dir.empty()) {
+            std::string st_file_path   = path_join(lora_model_dir, lora_name + ".safetensors");
+            std::string ckpt_file_path = path_join(lora_model_dir, lora_name + ".ckpt");
+            std::string gguf_file_path = path_join(lora_model_dir, lora_name + ".gguf");
+            if (file_exists(st_file_path)) {
+                file_path = st_file_path;
+            } else if (file_exists(ckpt_file_path)) {
+                file_path = ckpt_file_path;
+            } else if (file_exists(gguf_file_path)) {
+                file_path = gguf_file_path;
+            } else {
+                LOG_WARN("can not find %s, %s, %s for lora %s", st_file_path.c_str(), ckpt_file_path.c_str(), gguf_file_path.c_str(), lora_name.c_str());
+                return;
+            }
         } else {
-            LOG_WARN("can not find %s or %s for lora %s", st_file_path.c_str(), ckpt_file_path.c_str(), lora_name.c_str());
-            return;
+            file_path = lora_name;
         }
         LoraModel lora(backend, file_path);
         if (!lora.load_from_file()) {
@@ -1271,21 +1279,24 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
 
     int sample_steps = sigmas.size() - 1;
 
-    // Apply lora
-    auto result_pair                                = extract_and_remove_lora(prompt);
-    std::unordered_map<std::string, float> lora_f2m = result_pair.first;  // lora_name -> multiplier
+    // Apply lora if provided model directory
+    int64_t t0, t1;
+    if (!sd_ctx->sd->lora_model_dir.empty()) {
+        auto result_pair                                = extract_and_remove_lora(prompt);
+        std::unordered_map<std::string, float> lora_f2m = result_pair.first;  // lora_name -> multiplier
 
-    for (auto& kv : lora_f2m) {
-        LOG_DEBUG("lora %s:%.2f", kv.first.c_str(), kv.second);
+        for (auto& kv : lora_f2m) {
+            LOG_DEBUG("lora %s:%.2f", kv.first.c_str(), kv.second);
+        }
+
+        prompt = result_pair.second;
+        LOG_DEBUG("prompt after extract and remove lora: \"%s\"", prompt.c_str());
+
+        t0 = ggml_time_ms();
+        sd_ctx->sd->apply_loras(lora_f2m);
+        t1 = ggml_time_ms();
+        LOG_INFO("apply_loras completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
     }
-
-    prompt = result_pair.second;
-    LOG_DEBUG("prompt after extract and remove lora: \"%s\"", prompt.c_str());
-
-    int64_t t0 = ggml_time_ms();
-    sd_ctx->sd->apply_loras(lora_f2m);
-    int64_t t1 = ggml_time_ms();
-    LOG_INFO("apply_loras completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
 
     // Photo Maker
     std::string prompt_text_only;
@@ -1871,6 +1882,27 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
     LOG_INFO("img2vid completed in %.2fs", (t3 - t0) * 1.0f / 1000);
 
     return result_images;
+}
+
+void sd_lora_adapters_clear(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return;
+    }
+    sd_ctx->sd->curr_lora_state.clear();
+}
+
+void sd_lora_adapters_apply(sd_ctx_t* sd_ctx, std::vector<sd_lora_adapter_container_t>& lora_adapters) {
+    if (sd_ctx == NULL) {
+        return;
+    }
+
+    sd_lora_adapters_clear(sd_ctx);
+
+    std::unordered_map<std::string, float> lora_state;
+    for (const sd_lora_adapter_container_t& lora_adapter : lora_adapters) {
+        lora_state[lora_adapter.path] = lora_adapter.multiplier;
+    }
+    sd_ctx->sd->apply_loras(lora_state);
 }
 
 int sd_get_version(sd_ctx_t* sd_ctx) {
