@@ -233,6 +233,55 @@ SD_API void sd_lora_adapters_apply(sd_ctx_t* sd_ctx, std::vector<sd_lora_adapter
 
 SD_API int sd_get_version(sd_ctx_t* sd_ctx);
 
+typedef struct sd_sampling_stream_t sd_sampling_stream_t;
+
+SD_API sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
+                                            const char* prompt_c_str,
+                                            const char* negative_prompt_c_str,
+                                            int clip_skip,
+                                            float cfg_scale,
+                                            float guidance,
+                                            int width,
+                                            int height,
+                                            enum sample_method_t sample_method,
+                                            enum schedule_t schedule,
+                                            int sample_steps,
+                                            int64_t seed,
+                                            const sd_image_t* control_cond,
+                                            float control_strength,
+                                            int* skip_layers,
+                                            size_t skip_layers_count,
+                                            float slg_scale,
+                                            float skip_layer_start,
+                                            float skip_layer_end);
+SD_API sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
+                                            sd_image_t init_image,
+                                            const char* prompt_c_str,
+                                            const char* negative_prompt_c_str,
+                                            int clip_skip,
+                                            float cfg_scale,
+                                            float guidance,
+                                            int width,
+                                            int height,
+                                            enum sample_method_t sample_method,
+                                            enum schedule_t schedule,
+                                            int sample_steps,
+                                            float strength,
+                                            int64_t seed,
+                                            const sd_image_t* control_cond,
+                                            float control_strength,
+                                            int* skip_layers,
+                                            size_t skip_layers_count,
+                                            float slg_scale,
+                                            float skip_layer_start,
+                                            float skip_layer_end);
+SD_API int sd_sampling_stream_sampled_steps(sd_sampling_stream_t* stream);
+SD_API int sd_sampling_stream_steps(sd_sampling_stream_t* stream);
+SD_API void sd_sampling_stream_free(sd_sampling_stream_t* stream);
+SD_API bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+SD_API sd_image_t sd_sampling_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+SD_API const char* sd_sampling_stream_get_parameters_str(sd_sampling_stream_t* stream);
+
 typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
