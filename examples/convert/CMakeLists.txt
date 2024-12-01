@@ -1,4 +1,4 @@
-set(TARGET stable-diffusion-cli)
+set(TARGET stable-diffusion-convert)
 
 add_executable(${TARGET} main.cpp)
 install(TARGETS ${TARGET} RUNTIME)

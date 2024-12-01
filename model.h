@@ -155,7 +155,7 @@ struct TensorStorage {
     }
 };
 
-typedef std::function<bool(const TensorStorage&, ggml_tensor**)> on_new_tensor_cb_t;
+typedef std::function<bool(const TensorStorage&, const SDVersion, ggml_tensor**)> on_new_tensor_cb_t;
 
 class ModelLoader {
 protected:
@@ -178,6 +178,7 @@ public:
     std::map<std::string, enum ggml_type> tensor_storages_types;
 
     bool init_from_file(const std::string& file_path, const std::string& prefix = "");
+    bool init_from_safetensors_file(const std::string& dir_path, const std::string& file_prefix, ggml_type type, const std::string& prefix = "");
     SDVersion get_sd_version();
     ggml_type get_sd_wtype();
     ggml_type get_conditioner_wtype(std::vector<std::string> prefixes = {});
@@ -189,9 +190,9 @@ public:
                       ggml_backend_t backend,
                       std::set<std::string> ignore_tensors = {});
 
-    bool save_to_gguf_file(const std::string& file_path, ggml_type type);
+    bool save_to_gguf_file(const std::string& file_path, ggml_type outtype, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_l_outtype = GGML_TYPE_COUNT, ggml_type clip_g_outtype = GGML_TYPE_COUNT, ggml_type t5xxl_outtype = GGML_TYPE_COUNT);
     bool tensor_should_be_converted(const TensorStorage& tensor_storage, ggml_type type);
-    int64_t get_params_mem_size(ggml_backend_t backend, ggml_type type = GGML_TYPE_COUNT);
+    int64_t get_params_mem_size(ggml_backend_t backend, ggml_type outtype = GGML_TYPE_COUNT, ggml_type vae_outtype = GGML_TYPE_COUNT, ggml_type clip_l_outtype = GGML_TYPE_COUNT, ggml_type clip_g_outtype = GGML_TYPE_COUNT, ggml_type t5xxl_outtype = GGML_TYPE_COUNT);
     ~ModelLoader() = default;
 
     static std::string load_merges();

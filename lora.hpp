@@ -37,7 +37,7 @@ struct LoraModel : public GGMLRunner {
         }
 
         bool dry_run          = true;
-        auto on_new_tensor_cb = [&](const TensorStorage& tensor_storage, ggml_tensor** dst_tensor) -> bool {
+        auto on_new_tensor_cb = [&](const TensorStorage& tensor_storage, const SDVersion ver, ggml_tensor** dst_tensor) -> bool {
             const std::string& name = tensor_storage.name;
 
             if (filter_tensor && !contains(name, "lora")) {
