@@ -1144,7 +1144,7 @@ struct FluxCLIPEmbedder : public Conditioner {
         struct ggml_tensor* pooled              = NULL;  // [768,]
         std::vector<float> hidden_states_vec;
 
-        size_t chunk_len   = 256;
+        size_t chunk_len   = 255;
         size_t chunk_count = t5_tokens.size() / chunk_len;
         for (int chunk_idx = 0; chunk_idx < chunk_count; chunk_idx++) {
             // clip_l
@@ -1231,7 +1231,7 @@ struct FluxCLIPEmbedder : public Conditioner {
                                       int height,
                                       int adm_in_channels        = -1,
                                       bool force_zero_embeddings = false) {
-        auto tokens_and_weights = tokenize(text, 256, true);
+        auto tokens_and_weights = tokenize(text, 255, true);
         return get_learned_condition_common(work_ctx, n_threads, tokens_and_weights, clip_skip, force_zero_embeddings);
     }
 
