@@ -1467,6 +1467,8 @@ bool ModelLoader::init_from_ckpt_file(const std::string& file_path, const std::s
 
 SDVersion ModelLoader::get_sd_version() {
     TensorStorage token_embedding_weight;
+    bool is_sdxl         = false;
+    bool is_sdxl_refiner = false;
     for (auto& tensor_storage : tensor_storages) {
         if (tensor_storage.name.find("model.diffusion_model.double_blocks.") != std::string::npos) {
             return VERSION_FLUX;
@@ -1474,11 +1476,14 @@ SDVersion ModelLoader::get_sd_version() {
         if (tensor_storage.name.find("model.diffusion_model.joint_blocks.") != std::string::npos) {
             return VERSION_SD3;
         }
+        if (tensor_storage.name.find("model.diffusion_model.output_blocks.11.0.") != std::string::npos) {
+            is_sdxl_refiner = true;
+        }
         if (tensor_storage.name.find("conditioner.embedders.1") != std::string::npos) {
-            return VERSION_SDXL;
+            is_sdxl = true;
         }
         if (tensor_storage.name.find("cond_stage_model.1") != std::string::npos) {
-            return VERSION_SDXL;
+            is_sdxl = true;
         }
         if (tensor_storage.name.find("model.diffusion_model.input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
             return VERSION_SVD;
@@ -1495,6 +1500,12 @@ SDVersion ModelLoader::get_sd_version() {
         }
     }
 
+    if (is_sdxl) {
+        if (is_sdxl_refiner) {
+            return VERSION_SDXL_REFINER;
+        }
+        return VERSION_SDXL;
+    }
     if (token_embedding_weight.ne[0] == 768) {
         return VERSION_SD1;
     } else if (token_embedding_weight.ne[0] == 1024) {

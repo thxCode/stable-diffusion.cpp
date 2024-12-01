@@ -28,6 +28,7 @@ const char* model_version_to_str[] = {
     "SD 1.x",
     "SD 2.x",
     "SDXL",
+    "SDXL Refiner",
     "SVD",
     "SD3.x",
     "Flux"};
@@ -349,7 +350,7 @@ public:
             model_loader.set_wtype_override(wtype);
         }
 
-        if (version == VERSION_SDXL) {
+        if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
             vae_wtype = GGML_TYPE_F32;
             model_loader.set_wtype_override(GGML_TYPE_F32, "vae.");
         }
@@ -361,7 +362,7 @@ public:
 
         LOG_DEBUG("ggml tensor size = %d bytes", (int)sizeof(ggml_tensor));
 
-        if (version == VERSION_SDXL) {
+        if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
             scale_factor = 0.13025f;
             if (vae_path.size() == 0 && taesd_path.size() == 0) {
                 LOG_WARN(
@@ -1404,7 +1405,7 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
     SDCondition uncond;
     if (cfg_scale != 1.0) {
         bool force_zero_embeddings = false;
-        if (sd_ctx->sd->version == VERSION_SDXL && negative_prompt.size() == 0) {
+        if ((sd_ctx->sd->version == VERSION_SDXL || sd_ctx->sd->version == VERSION_SDXL_REFINER) && negative_prompt.size() == 0) {
             force_zero_embeddings = true;
         }
         uncond = sd_ctx->sd->cond_stage_model->get_learned_condition(work_ctx,
