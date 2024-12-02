@@ -2364,6 +2364,7 @@ void sd_sampling_stream_free(sd_sampling_stream_t* stream) {
     stream->cond         = {};
     stream->uncond       = {};
     stream->control_hint = nullptr;
+    // stream->x = nullptr; // no need to free, it's a view
     stream->noised_input = nullptr;
     stream->out_cond     = nullptr;
     stream->out_uncond   = nullptr;
@@ -2372,7 +2373,10 @@ void sd_sampling_stream_free(sd_sampling_stream_t* stream) {
         ggml_free(stream->work_ctx);
         stream->work_ctx = nullptr;
     }
+    // stream->sampler = nullptr; // no need to free, it's a shared pointer
     stream->sigmas.clear();
+    // stream->rng = nullptr; // no need to free, it's a shared pointer
+    stream->skip_layers.clear();
 }
 
 bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
