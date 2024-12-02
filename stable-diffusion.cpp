@@ -322,7 +322,7 @@ public:
         ggml_type t5xxl_wtype           = GGML_TYPE_COUNT;
         ggml_type diffusion_model_wtype = GGML_TYPE_COUNT;
         ggml_type vae_wtype             = GGML_TYPE_COUNT;
-        if (wtype == GGML_TYPE_COUNT) {
+        if (wtype >= GGML_TYPE_COUNT) {
             model_wtype = model_loader.get_sd_wtype();
             if (model_wtype == GGML_TYPE_COUNT) {
                 model_wtype = GGML_TYPE_F32;
