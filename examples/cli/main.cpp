@@ -840,6 +840,7 @@ int main(int argc, const char* argv[]) {
                                   vae_decode_only,
                                   params.vae_tiling,
                                   true,
+                                  true,
                                   params.n_threads,
                                   params.wtype,
                                   params.rng_type,
