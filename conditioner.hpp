@@ -155,8 +155,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         struct ggml_context* embd_ctx = ggml_init(params);
         struct ggml_tensor* embd      = NULL;
         int64_t hidden_size           = text_model ? text_model->model.hidden_size : text_model2->model.hidden_size;
-        auto on_load = [&](const TensorStorage& tensor_storage, const SDVersion ver, ggml_tensor** dst_tensor) {
-
+        auto on_load                  = [&](const TensorStorage& tensor_storage, const SDVersion ver, ggml_tensor** dst_tensor) {
             if (tensor_storage.ne[0] != hidden_size) {
                 LOG_DEBUG("embedding wrong hidden size, got %i, expected %i", tensor_storage.ne[0], hidden_size);
                 return false;
@@ -452,8 +451,17 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                         false,
                                         &chunk_hidden_states1,
                                         work_ctx);
+                } else if (text_model2) {
+                    text_model2->compute(n_threads,
+                                         input_ids,
+                                         num_custom_embeddings,
+                                         token_embed_custom.data(),
+                                         max_token_idx,
+                                         false,
+                                         &chunk_hidden_states1,
+                                         work_ctx);
                 }
-                if (text_model2) {
+                if (version == VERSION_SDXL) {
                     text_model2->compute(n_threads,
                                          input_ids2,
                                          0,
@@ -461,12 +469,8 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                          max_token_idx,
                                          false,
                                          &chunk_hidden_states2, work_ctx);
-                    if (chunk_hidden_states1) {
-                        // concat
-                        chunk_hidden_states = ggml_tensor_concat(work_ctx, chunk_hidden_states1, chunk_hidden_states2, 0);
-                    } else {
-                        chunk_hidden_states = chunk_hidden_states2;
-                    }
+                    // concat
+                    chunk_hidden_states = ggml_tensor_concat(work_ctx, chunk_hidden_states1, chunk_hidden_states2, 0);
 
                     if (chunk_idx == 0) {
                         text_model2->compute(n_threads,
@@ -516,7 +520,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                         ggml_nelements(hidden_states) / chunk_hidden_states->ne[0]);
 
         ggml_tensor* vec = NULL;
-        if (version == VERSION_SDXL || version == VERSION_SDXL_REFINER) {
+        if (version == VERSION_SDXL) {
             int out_dim = 256;
             vec         = ggml_new_tensor_1d(work_ctx, GGML_TYPE_F32, adm_in_channels);
             // [0:1280]
