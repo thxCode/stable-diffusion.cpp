@@ -517,7 +517,7 @@ std::string convert_diffusers_name_to_compvis(std::string key, char seq) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%ccontext_block%cadaLN_modulation%c%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, m[1].c_str());
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff_context%cnet%c(\\d+)%c", seq, seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff_context%cnet%c(\\d+)%c", seq, seq, seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%ccontext_block%cmlp%cfc%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, std::to_string(std::stoi(m[1]) / 2 + 1).c_str());
     }
 
@@ -525,7 +525,7 @@ std::string convert_diffusers_name_to_compvis(std::string key, char seq) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%cx_block%cadaLN_modulation%c%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, m[1].c_str());
     }
 
-    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff%cnet%c(\\d+)%c", seq, seq, seq, seq)), key)) {
+    if (match(m, std::regex(format("transformer_blocks%c(\\d+)%cff%cnet%c(\\d+)%c", seq, seq, seq, seq, seq)), key)) {
         return format("model%cdiffusion_model%cjoint_blocks%c%s%cx_block%cmlp%cfc%s", seq, seq, seq, m[0].c_str(), seq, seq, seq, std::to_string(std::stoi(m[1]) / 2 + 1).c_str());
     }
 
@@ -639,9 +639,9 @@ std::string convert_tensor_name(std::string name) {
     } else {
         new_name = name;
     }
-    // if (new_name != name) {
-    //     LOG_DEBUG("%s => %s", name.c_str(), new_name.c_str());
-    // }
+    if (new_name != name) {
+        LOG_DEBUG("%s => %s", name.c_str(), new_name.c_str());
+    }
     return new_name;
 }
 
