@@ -11,6 +11,7 @@
 #include "denoiser.hpp"
 #include "diffusion_model.hpp"
 #include "esrgan.hpp"
+#include "latent-preview.h"
 #include "lora.hpp"
 #include "pmid.hpp"
 #include "tae.hpp"
@@ -2580,7 +2581,84 @@ bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
     return false;
 }
 
+sd_image_t sd_sampling_stream_get_preview_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
+    if (stream == nullptr) {
+        return sd_image_t{};
+    }
+
+    ggml_tensor* x = ggml_dup_tensor(stream->work_ctx, stream->x);
+    copy_ggml_tensor(x, stream->x);
+
+    struct ggml_tensor* decoded_image = sd_ctx->sd->decode_first_stage(stream->work_ctx, x);
+
+    return sd_image_t{
+        /*.width   =*/static_cast<uint32_t>(decoded_image->ne[0]),
+        /*.height  =*/static_cast<uint32_t>(decoded_image->ne[1]),
+        /*.channel =*/static_cast<uint32_t>(decoded_image->ne[2]),
+        /*.data    =*/sd_tensor_to_image(decoded_image),
+    };
+}
+
+sd_image_t sd_sampling_stream_get_faster_preview_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
+    if (stream == nullptr) {
+        return sd_image_t{};
+    }
+
+    ggml_tensor* latents = stream->denoised;
+    if (latents == nullptr) {
+        return sd_image_t{};
+    }
+
+    const uint32_t channel = 3;
+    auto width             = static_cast<int32_t>(latents->ne[0]);
+    auto height            = static_cast<int32_t>(latents->ne[1]);
+    auto dim               = static_cast<int32_t>(latents->ne[2]);
+
+    const float(*latent_rgb_proj)[channel];
+    switch (dim) {
+        case 16: {
+            if (sd_version_is_sd3(sd_ctx->sd->version)) {
+                latent_rgb_proj = sd3_latent_rgb_proj;
+            } else if (sd_version_is_flux(sd_ctx->sd->version)) {
+                latent_rgb_proj = flux_latent_rgb_proj;
+            } else {
+                // unknown model
+                return sd_image_t{};
+            }
+        } break;
+        case 4: {
+            if (sd_ctx->sd->version == VERSION_SDXL) {
+                latent_rgb_proj = sdxl_latent_rgb_proj;
+            } else if (sd_ctx->sd->version == VERSION_SD1 || sd_ctx->sd->version == VERSION_SD2) {
+                latent_rgb_proj = sd_latent_rgb_proj;
+            } else {
+                // unknown model
+                return sd_image_t{};
+            }
+        } break;
+        default:
+            return sd_image_t{};
+    }
+
+    auto* data = (uint8_t*)malloc(width * height * channel * sizeof(uint8_t));
+    if (data == nullptr) {
+        return sd_image_t{};
+    }
+    preview_latent_image(data, latents, latent_rgb_proj, width, height, dim);
+
+    return sd_image_t{
+        /*.width   =*/static_cast<uint32_t>(width),
+        /*.height  =*/static_cast<uint32_t>(height),
+        /*.channel =*/channel,
+        /*.data    =*/data,
+    };
+}
+
 sd_image_t sd_sampling_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
+    if (stream == nullptr) {
+        return sd_image_t{};
+    }
+
     size_t t0                         = ggml_time_ms();
     struct ggml_tensor* decoded_image = sd_ctx->sd->decode_first_stage(stream->work_ctx, stream->x);
     size_t t1                         = ggml_time_ms();

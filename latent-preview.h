@@ -1,3 +1,5 @@
+#ifndef __LATENT_PREVIEW_H__
+#define __LATENT_PREVIEW_H__
 
 // https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/latent_formats.py#L152-L169
 const float flux_latent_rgb_proj[16][3] = {
@@ -52,7 +54,7 @@ const float sd_latent_rgb_proj[4][3]{
     {-0.2829, 0.1762, 0.2721},
     {-0.2120, -0.2616, -0.7177}};
 
-void preview_latent_image(uint8_t* buffer, struct ggml_tensor* latents, const float (*latent_rgb_proj)[3], int width, int height, int dim) {
+inline void preview_latent_image(uint8_t* buffer, struct ggml_tensor* latents, const float (*latent_rgb_proj)[3], int width, int height, int dim) {
     size_t buffer_head = 0;
     for (int j = 0; j < height; j++) {
         for (int i = 0; i < width; i++) {
@@ -81,3 +83,5 @@ void preview_latent_image(uint8_t* buffer, struct ggml_tensor* latents, const fl
         }
     }
 }
+
+#endif  // __LATENT_PREVIEW_H__

@@ -285,6 +285,8 @@ SD_API int sd_sampling_stream_sampled_steps(sd_sampling_stream_t* stream);
 SD_API int sd_sampling_stream_steps(sd_sampling_stream_t* stream);
 SD_API void sd_sampling_stream_free(sd_sampling_stream_t* stream);
 SD_API bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+SD_API sd_image_t sd_sampling_stream_get_preview_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
+SD_API sd_image_t sd_sampling_stream_get_faster_preview_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
 SD_API sd_image_t sd_sampling_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream);
 SD_API const char* sd_sampling_stream_get_parameters_str(sd_sampling_stream_t* stream);
 
