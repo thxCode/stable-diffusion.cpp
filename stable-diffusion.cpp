@@ -2053,8 +2053,12 @@ sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
     parameters_str += "Model: " + std::string(model_version_to_str[sd_ctx->sd->version]) + ", ";
     parameters_str += "RNG: " + std::string(rng_types_argument_str[sd_ctx->sd->rng_type]) + ", ";
     parameters_str += "Sampler: " + std::string(sample_methods_argument_str[sample_method]);
-    if (schedule == KARRAS) {
-        parameters_str += " karras";
+    {
+        auto schedule_type = schedule;
+        if (schedule_type == DEFAULT) {
+            schedule_type = DISCRETE;
+        }
+        parameters_str += " " + std::string(schedulers_argument_str[schedule_type]);
     }
 
     // Get learned condition
