@@ -6,16 +6,28 @@
 
 class RNG {
 public:
+    virtual uint64_t get_seed()                  = 0;
     virtual void manual_seed(uint64_t seed)      = 0;
     virtual std::vector<float> randn(uint32_t n) = 0;
 };
 
 class STDDefaultRNG : public RNG {
 private:
+    uint64_t seed;
     std::default_random_engine generator;
 
 public:
+    STDDefaultRNG(uint64_t seed = 0) {
+        this->seed = seed;
+        generator.seed((unsigned int)seed);
+    }
+
+    uint64_t get_seed() {
+        return seed;
+    }
+
     void manual_seed(uint64_t seed) {
+        this->seed = seed;
         generator.seed((unsigned int)seed);
     }
 

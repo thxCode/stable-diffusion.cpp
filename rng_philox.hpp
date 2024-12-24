@@ -93,6 +93,10 @@ public:
         this->offset = 0;
     }
 
+    uint64_t get_seed() {
+        return seed;
+    }
+
     void manual_seed(uint64_t seed) {
         this->seed   = seed;
         this->offset = 0;
