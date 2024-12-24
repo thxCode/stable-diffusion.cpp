@@ -155,7 +155,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         struct ggml_context* embd_ctx = ggml_init(params);
         struct ggml_tensor* embd      = NULL;
         int64_t hidden_size           = text_model ? text_model->model.hidden_size : text_model2->model.hidden_size;
-        auto on_load                  = [&](const TensorStorage& tensor_storage, ggml_tensor** dst_tensor) {
+        auto on_load                  = [&](const TensorStorage& tensor_storage, const SDVersion ver, ggml_tensor** dst_tensor) {
             if (tensor_storage.ne[0] != hidden_size) {
                 LOG_DEBUG("embedding wrong hidden size, got %i, expected %i", tensor_storage.ne[0], hidden_size);
                 return false;
