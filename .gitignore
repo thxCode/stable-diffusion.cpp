@@ -13,3 +13,4 @@ models*
 *.log
 .idea/
 cmake-build-*/
+preview.png

@@ -29,6 +29,13 @@ const char* modes_str[] = {
     "convert",
 };
 
+const char* previews_str[] = {
+    "none",
+    "proj",
+    "tae",
+    "vae",
+};
+
 enum SDMode {
     TXT2IMG,
     IMG2IMG,
@@ -97,6 +104,11 @@ struct SDParams {
     float slg_scale              = 0.;
     float skip_layer_start       = 0.01;
     float skip_layer_end         = 0.2;
+
+    sd_preview_policy_t preview_method = SD_PREVIEW_NONE;
+    int preview_interval               = 1;
+    std::string preview_path           = "preview.png";
+    bool taesd_preview                 = false;
 };
 
 void print_params(SDParams params) {
@@ -145,6 +157,8 @@ void print_params(SDParams params) {
     printf("    batch_count:       %d\n", params.batch_count);
     printf("    vae_tiling:        %s\n", params.vae_tiling ? "true" : "false");
     printf("    upscale_repeats:   %d\n", params.upscale_repeats);
+    printf("    preview_mode:      %d\n", previews_str[params.preview_method]);
+    printf("    preview_interval:  %d\n", params.preview_interval);
 }
 
 void print_usage(int argc, const char* argv[]) {
@@ -152,16 +166,17 @@ void print_usage(int argc, const char* argv[]) {
     printf("\n");
     printf("arguments:\n");
     printf("  -h, --help                         show this help message and exit\n");
-    printf("  -M, --mode [MODEL]                 run mode (txt2img or img2img or convert, default: txt2img)\n");
+    printf("  -M, --mode [MODE]                  run mode (txt2img or img2img or convert, default: txt2img)\n");
     printf("  -t, --threads N                    number of threads to use during computation (default: -1)\n");
     printf("                                     If threads <= 0, then threads will be set to the number of CPU physical cores\n");
     printf("  -m, --model [MODEL]                path to full model\n");
-    printf("  --diffusion-model                  path to the standalone diffusion model\n");
-    printf("  --clip_l                           path to the clip-l text encoder\n");
-    printf("  --clip_g                           path to the clip-g text encoder\n");
-    printf("  --t5xxl                            path to the the t5xxl text encoder\n");
+    printf("  --diffusion-model [MODEL]          path to the standalone diffusion model\n");
+    printf("  --clip_l [ENCODER]                 path to the clip-l text encoder\n");
+    printf("  --clip_g [ENCODER]                 path to the clip-g text encoder\n");
+    printf("  --t5xxl [ENCODER]                  path to the the t5xxl text encoder\n");
     printf("  --vae [VAE]                        path to vae\n");
-    printf("  --taesd [TAESD_PATH]               path to taesd. Using Tiny AutoEncoder for fast decoding (low quality)\n");
+    printf("  --taesd [TAESD]                    path to taesd. Using Tiny AutoEncoder for fast decoding (low quality)\n");
+    printf("  --taesd-preview-only               prevents usage of taesd for decoding the final image. (for use with --preview %s)\n", previews_str[SD_PREVIEW_TAE]);
     printf("  --control-net [CONTROL_PATH]       path to control net model\n");
     printf("  --embd-dir [EMBEDDING_PATH]        path to embeddings\n");
     printf("  --stacked-id-embd-dir [DIR]        path to PHOTOMAKER stacked id embeddings\n");
@@ -207,6 +222,10 @@ void print_usage(int argc, const char* argv[]) {
     printf("                                     This might crash if it is not supported by the backend.\n");
     printf("  --control-net-cpu                  keep controlnet in cpu (for low vram)\n");
     printf("  --canny                            apply canny preprocessor (edge detection)\n");
+    printf("  --preview {%s,%s,%s,%s}            preview method. (default is %s(disabled))\n", previews_str[0], previews_str[1], previews_str[2], previews_str[3], previews_str[SD_PREVIEW_NONE]);
+    printf("                                     %s is the fastest\n", previews_str[SD_PREVIEW_PROJ]);
+    printf("  --preview-interval [N]             How often to save the image preview");
+    printf("  --preview-path [PATH}              path to write preview image to (default: ./preview.png)\n");
     printf("  --color                            Colors the logging tags according to level\n");
     printf("  -v, --verbose                      print extra info\n");
 }
@@ -465,6 +484,8 @@ void parse_args(int argc, const char** argv, SDParams& params) {
             params.diffusion_flash_attn = true;  // can reduce MEM significantly
         } else if (arg == "--canny") {
             params.canny_preprocess = true;
+        } else if (arg == "--taesd-preview-only") {
+            params.taesd_preview = true;
         } else if (arg == "-b" || arg == "--batch-count") {
             if (++i >= argc) {
                 invalid_arg = true;
@@ -587,6 +608,35 @@ void parse_args(int argc, const char** argv, SDParams& params) {
                 break;
             }
             params.skip_layer_end = std::stof(argv[i]);
+        } else if (arg == "--preview") {
+            if (++i >= argc) {
+                invalid_arg = true;
+                break;
+            }
+            const char* preview = argv[i];
+            int preview_method  = -1;
+            for (int m = 0; m < N_PREVIEWS; m++) {
+                if (!strcmp(preview, previews_str[m])) {
+                    preview_method = m;
+                }
+            }
+            if (preview_method == -1) {
+                invalid_arg = true;
+                break;
+            }
+            params.preview_method = (sd_preview_policy_t)preview_method;
+        } else if (arg == "--preview-interval") {
+            if (++i >= argc) {
+                invalid_arg = true;
+                break;
+            }
+            params.preview_interval = std::stoi(argv[i]);
+        } else if (arg == "--preview-path") {
+            if (++i >= argc) {
+                invalid_arg = true;
+                break;
+            }
+            params.preview_path = argv[i];
         } else {
             fprintf(stderr, "error: unknown argument: %s\n", arg.c_str());
             print_usage(argc, argv);
@@ -744,10 +794,17 @@ void sd_log_cb(enum sd_log_level_t level, const char* log, void* data) {
     fflush(out_stream);
 }
 
+const char* preview_path;
+
+void step_callback(int step, sd_image_t image) {
+    stbi_write_png(preview_path, image.width, image.height, image.channel, image.data, 0);
+}
+
 int main(int argc, const char* argv[]) {
     SDParams params;
 
     parse_args(argc, argv, params);
+    preview_path = params.preview_path.c_str();
 
     sd_set_log_callback(sd_log_cb, (void*)&params);
 
@@ -857,7 +914,8 @@ int main(int argc, const char* argv[]) {
                                   params.clip_on_cpu,
                                   params.control_net_cpu,
                                   params.vae_on_cpu,
-                                  params.diffusion_flash_attn);
+                                  params.diffusion_flash_attn,
+                                  params.taesd_preview);
 
     if (sd_ctx == NULL) {
         printf("new_sd_ctx_t failed\n");
@@ -923,7 +981,10 @@ int main(int argc, const char* argv[]) {
                           params.skip_layers.size(),
                           params.slg_scale,
                           params.skip_layer_start,
-                          params.skip_layer_end);
+                          params.skip_layer_end,
+                          params.preview_method,
+                          params.preview_interval,
+                          (step_callback_t)step_callback);
     } else {
         sd_image_t input_image = {(uint32_t)params.width,
                                   (uint32_t)params.height,
@@ -991,7 +1052,10 @@ int main(int argc, const char* argv[]) {
                               params.skip_layers.size(),
                               params.slg_scale,
                               params.skip_layer_start,
-                              params.skip_layer_end);
+                              params.skip_layer_end,
+                              params.preview_method,
+                              params.preview_interval,
+                              (step_callback_t)step_callback);
         }
     }
 
