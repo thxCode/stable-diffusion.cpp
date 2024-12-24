@@ -73,42 +73,52 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         } else if (sd_version_is_sd2(version)) {
             text_model = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPEN_CLIP_VIT_H_14, clip_skip);
         } else if (sd_version_is_sdxl(version)) {
-            text_model  = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip, false);
+            if (version != VERSION_SDXL_REFINER) {
+                text_model  = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.transformer.text_model", OPENAI_CLIP_VIT_L_14, clip_skip, false);
+            }
             text_model2 = std::make_shared<CLIPTextModelRunner>(backend, tensor_types, "cond_stage_model.1.transformer.text_model", OPEN_CLIP_VIT_BIGG_14, clip_skip, false);
         }
     }
 
     void set_clip_skip(int clip_skip) {
-        text_model->set_clip_skip(clip_skip);
-        if (sd_version_is_sdxl(version)) {
+        if (text_model) {
+            text_model->set_clip_skip(clip_skip);
+        }
+        if (text_model2) {
             text_model2->set_clip_skip(clip_skip);
         }
     }
 
     void get_param_tensors(std::map<std::string, struct ggml_tensor*>& tensors) {
-        text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
-        if (sd_version_is_sdxl(version)) {
+        if (text_model) {
+            text_model->get_param_tensors(tensors, "cond_stage_model.transformer.text_model");
+        }
+        if (text_model2) {
             text_model2->get_param_tensors(tensors, "cond_stage_model.1.transformer.text_model");
         }
     }
 
     void alloc_params_buffer() {
-        text_model->alloc_params_buffer();
-        if (sd_version_is_sdxl(version)) {
+        if (text_model) {
+            text_model->alloc_params_buffer();
+        }
+        if (text_model2) {
             text_model2->alloc_params_buffer();
         }
     }
 
     void free_params_buffer() {
-        text_model->free_params_buffer();
-        if (sd_version_is_sdxl(version)) {
+        if (text_model) {
+            text_model->free_params_buffer();
+        }
+        if (text_model2) {
             text_model2->free_params_buffer();
         }
     }
 
     size_t get_params_buffer_size() {
-        size_t buffer_size = text_model->get_params_buffer_size();
-        if (sd_version_is_sdxl(version)) {
+        size_t buffer_size = text_model ? text_model->get_params_buffer_size() : 0;
+        if (text_model2) {
             buffer_size += text_model2->get_params_buffer_size();
         }
         return buffer_size;
@@ -131,7 +141,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
         params.no_alloc               = false;
         struct ggml_context* embd_ctx = ggml_init(params);
         struct ggml_tensor* embd      = NULL;
-        int64_t hidden_size           = text_model->model.hidden_size;
+        int64_t hidden_size           = text_model ? text_model->model.hidden_size : text_model2->model.hidden_size;
         auto on_load                  = [&](const TensorStorage& tensor_storage, ggml_tensor** dst_tensor) {
             if (tensor_storage.ne[0] != hidden_size) {
                 LOG_DEBUG("embedding wrong hidden size, got %i, expected %i", tensor_storage.ne[0], hidden_size);
@@ -148,7 +158,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                embd->data,
                ggml_nbytes(embd));
         for (int i = 0; i < embd->ne[1]; i++) {
-            bpe_tokens.push_back(text_model->model.vocab_size + num_custom_embeddings);
+            bpe_tokens.push_back((text_model ? text_model->model.vocab_size : text_model2->model.vocab_size) + num_custom_embeddings);
             // LOG_DEBUG("new custom token: %i", text_model.vocab_size + num_custom_embeddings);
             num_custom_embeddings++;
         }
@@ -162,7 +172,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                 int32_t image_token,
                                 bool padding = false) {
         return tokenize_with_trigger_token(text, num_input_imgs, image_token,
-                                           text_model->model.n_token, padding);
+                                           text_model ? text_model->model.n_token : text_model2->model.n_token, padding);
     }
 
     std::vector<int> convert_token_to_id(std::string text) {
@@ -311,7 +321,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
 
     std::pair<std::vector<int>, std::vector<float>> tokenize(std::string text,
                                                              bool padding = false) {
-        return tokenize(text, text_model->model.n_token, padding);
+        return tokenize(text, text_model ? text_model->model.n_token : text_model2->model.n_token, padding);
     }
 
     std::pair<std::vector<int>, std::vector<float>> tokenize(std::string text,
@@ -419,28 +429,31 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
             }
 
             {
-                text_model->compute(n_threads,
-                                    input_ids,
-                                    num_custom_embeddings,
-                                    token_embed_custom.data(),
-                                    max_token_idx,
-                                    false,
-                                    &chunk_hidden_states1,
-                                    work_ctx);
-                if (sd_version_is_sdxl(version)) {
+                if (text_model) {
+                    text_model->compute(n_threads,
+                                        input_ids,
+                                        num_custom_embeddings,
+                                        token_embed_custom.data(),
+                                        max_token_idx,
+                                        false,
+                                        &chunk_hidden_states1,
+                                        work_ctx);
+                }
+                if (text_model2) {
                     text_model2->compute(n_threads,
-                                         input_ids2,
-                                         0,
-                                         NULL,
+                                         text_model ? input_ids2 : input_ids,
+                                         text_model ? 0 : num_custom_embeddings,
+                                         text_model ? NULL : token_embed_custom.data(),
                                          max_token_idx,
                                          false,
-                                         &chunk_hidden_states2, work_ctx);
+                                         text_model ? &chunk_hidden_states2 : &chunk_hidden_states1,
+                                         work_ctx);
                     // concat
-                    chunk_hidden_states = ggml_tensor_concat(work_ctx, chunk_hidden_states1, chunk_hidden_states2, 0);
+                    chunk_hidden_states = text_model ? ggml_tensor_concat(work_ctx, chunk_hidden_states1, chunk_hidden_states2, 0) : chunk_hidden_states1;
 
                     if (chunk_idx == 0) {
                         text_model2->compute(n_threads,
-                                             input_ids2,
+                                             text_model ? input_ids2 : input_ids,
                                              0,
                                              NULL,
                                              max_token_idx,
@@ -486,7 +499,7 @@ struct FrozenCLIPEmbedderWithCustomWords : public Conditioner {
                                         ggml_nelements(hidden_states) / chunk_hidden_states->ne[0]);
 
         ggml_tensor* vec = NULL;
-        if (sd_version_is_sdxl(version)) {
+        if (sd_version_is_sdxl(version) && version != VERSION_SDXL_REFINER) {
             int out_dim = 256;
             vec         = ggml_new_tensor_1d(work_ctx, GGML_TYPE_F32, adm_in_channels);
             // [0:1280]
