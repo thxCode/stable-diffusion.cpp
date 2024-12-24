@@ -241,6 +241,14 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                            float strength,
                            int64_t seed);
 
+typedef struct sd_lora_adapter_container_t {
+    const char* path;
+    float multiplier;
+} sd_lora_adapter_container_t;
+
+SD_API void sd_lora_adapters_clear(sd_ctx_t* sd_ctx);
+SD_API void sd_lora_adapters_apply(sd_ctx_t* sd_ctx, std::vector<sd_lora_adapter_container_t>& lora_adapters);
+
 SD_API int sd_get_version(sd_ctx_t* sd_ctx);
 
 typedef struct upscaler_ctx_t upscaler_ctx_t;
