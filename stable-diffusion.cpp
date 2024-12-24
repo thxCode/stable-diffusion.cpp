@@ -399,15 +399,7 @@ public:
             first_stage_model->alloc_params_buffer();
             first_stage_model->get_param_tensors(tensors, "first_stage_model");
         } else {
-            clip_backend   = backend;
-            bool use_t5xxl = false;
-            if (sd_version_is_dit(version)) {
-                use_t5xxl = true;
-            }
-            if (!ggml_backend_is_cpu(backend) && use_t5xxl && conditioner_wtype != GGML_TYPE_F32) {
-                clip_on_cpu = true;
-                LOG_INFO("set clip_on_cpu to true");
-            }
+            clip_backend = backend;
             if (clip_on_cpu && !ggml_backend_is_cpu(backend)) {
                 LOG_INFO("CLIP: Using CPU backend");
                 clip_backend = ggml_backend_cpu_init();
