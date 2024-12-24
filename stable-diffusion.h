@@ -30,8 +30,12 @@ extern "C" {
 
 enum rng_type_t {
     STD_DEFAULT_RNG,
-    CUDA_RNG
+    CUDA_RNG,
+    N_RNG_TYPES
 };
+
+SD_API rng_type_t sd_argument_to_rng_type(const char* str);
+SD_API const char* sd_rng_type_to_argument(rng_type_t rng_type);
 
 enum sample_method_t {
     EULER_A,
@@ -47,6 +51,9 @@ enum sample_method_t {
     N_SAMPLE_METHODS
 };
 
+SD_API sample_method_t sd_argument_to_sample_method(const char* str);
+SD_API const char* sd_sample_method_to_argument(sample_method_t sample_method);
+
 enum schedule_t {
     DEFAULT,
     DISCRETE,
@@ -56,6 +63,9 @@ enum schedule_t {
     GITS,
     N_SCHEDULES
 };
+
+SD_API schedule_t sd_argument_to_schedule(const char* str);
+SD_API const char* sd_schedule_to_argument(schedule_t schedule);
 
 // same as enum ggml_type
 enum sd_type_t {
@@ -145,7 +155,8 @@ SD_API sd_ctx_t* new_sd_ctx(const char* model_path,
                             bool keep_clip_on_cpu,
                             bool keep_control_net_cpu,
                             bool keep_vae_on_cpu,
-                            bool diffusion_flash_attn);
+                            bool diffusion_flash_attn,
+                            int main_gpu = 0);
 
 SD_API void free_sd_ctx(sd_ctx_t* sd_ctx);
 
@@ -215,7 +226,8 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
 typedef struct upscaler_ctx_t upscaler_ctx_t;
 
 SD_API upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path,
-                                        int n_threads);
+                                        int n_threads,
+                                        int main_gpu = 0);
 SD_API void free_upscaler_ctx(upscaler_ctx_t* upscaler_ctx);
 
 SD_API sd_image_t upscale(upscaler_ctx_t* upscaler_ctx, sd_image_t input_image, uint32_t upscale_factor);

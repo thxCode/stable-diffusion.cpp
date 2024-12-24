@@ -47,6 +47,72 @@ const char* sampling_methods_str[] = {
 
 /*================================================== Helper Functions ================================================*/
 
+static const char* rng_types_argument_str[] = {
+    "std_default",
+    "cuda",
+};
+
+rng_type_t sd_argument_to_rng_type(const char* str) {
+    for (int r = 0; r < N_RNG_TYPES; r++) {
+        if (!strcmp(str, rng_types_argument_str[r])) {
+            return (rng_type_t)r;
+        }
+    }
+    return STD_DEFAULT_RNG;
+}
+
+const char* sd_rng_type_to_argument(rng_type_t rng_type) {
+    return rng_types_argument_str[rng_type];
+}
+
+static const char* sample_methods_argument_str[] = {
+    "euler_a",
+    "euler",
+    "heun",
+    "dpm2",
+    "dpm++2s_a",
+    "dpm++2m",
+    "dpm++2mv2",
+    "ipndm",
+    "ipndm_v",
+    "lcm",
+};
+
+sample_method_t sd_argument_to_sample_method(const char* str) {
+    for (int m = 0; m < N_SAMPLE_METHODS; m++) {
+        if (!strcmp(str, sample_methods_argument_str[m])) {
+            return (sample_method_t)m;
+        }
+    }
+    return EULER_A;
+}
+
+const char* sd_sample_method_to_argument(sample_method_t sample_method) {
+    return sample_methods_argument_str[sample_method];
+}
+
+static const char* schedulers_argument_str[] = {
+    "default",
+    "discrete",
+    "karras",
+    "exponential",
+    "ays",
+    "gits",
+};
+
+schedule_t sd_argument_to_schedule(const char* str) {
+    for (int d = 0; d < N_SCHEDULES; d++) {
+        if (!strcmp(str, schedulers_argument_str[d])) {
+            return (schedule_t)d;
+        }
+    }
+    return DEFAULT;
+}
+
+const char* sd_schedule_to_argument(schedule_t schedule) {
+    return schedulers_argument_str[schedule];
+}
+
 void calculate_alphas_cumprod(float* alphas_cumprod,
                               float linear_start = 0.00085f,
                               float linear_end   = 0.0120,
@@ -153,29 +219,49 @@ public:
                         bool clip_on_cpu,
                         bool control_net_cpu,
                         bool vae_on_cpu,
-                        bool diffusion_flash_attn) {
+                        bool diffusion_flash_attn,
+                        int main_gpu) {
         use_tiny_autoencoder = taesd_path.size() > 0;
-#ifdef SD_USE_CUBLAS
+#ifdef SD_USE_CUDA
+#ifdef SD_USE_HIP
+        LOG_DEBUG("Using HIP backend");
+#elif defined(SD_USE_MUSA)
+        LOG_DEBUG("Using MUSA backend");
+#else
         LOG_DEBUG("Using CUDA backend");
-        backend = ggml_backend_cuda_init(0);
+#endif
+        backend = ggml_backend_cuda_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("CUDA backend init failed");
+        }
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
-        ggml_backend_metal_log_set_callback(ggml_log_callback_default, nullptr);
         backend = ggml_backend_metal_init();
+        if (!backend) {
+            LOG_ERROR("Metal backend init failed");
+        }
 #endif
 #ifdef SD_USE_VULKAN
         LOG_DEBUG("Using Vulkan backend");
-        for (int device = 0; device < ggml_backend_vk_get_device_count(); ++device) {
-            backend = ggml_backend_vk_init(device);
-        }
+        backend = ggml_backend_vk_init(main_gpu);
         if (!backend) {
-            LOG_WARN("Failed to initialize Vulkan backend");
+            LOG_ERROR("Vulkan backend init failed");
         }
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("SYCL backend init failed");
+        }
+#endif
+#ifdef SD_USE_CANN
+        LOG_DEBUG("Using CANN backend");
+        backend = ggml_backend_cann_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("CANN backend init failed");
+        }
 #endif
 
         if (!backend) {
@@ -1085,7 +1171,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool keep_clip_on_cpu,
                      bool keep_control_net_cpu,
                      bool keep_vae_on_cpu,
-                     bool diffusion_flash_attn) {
+                     bool diffusion_flash_attn,
+                     int main_gpu) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
         return NULL;
@@ -1127,7 +1214,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     keep_clip_on_cpu,
                                     keep_control_net_cpu,
                                     keep_vae_on_cpu,
-                                    diffusion_flash_attn)) {
+                                    diffusion_flash_attn,
+                                    main_gpu)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
         free(sd_ctx);
