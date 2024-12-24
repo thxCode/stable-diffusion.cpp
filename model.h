@@ -228,6 +228,7 @@ public:
 
     static std::string load_merges();
     static std::string load_t5_tokenizer_json();
+    bool has_prefix_tensors(const std::string& prefix);
 };
 
 #endif  // __MODEL_H__
