@@ -1593,34 +1593,31 @@ SDVersion ModelLoader::get_sd_version() {
     TensorStorage token_embedding_weight, input_block_weight;
     bool input_block_checked = false;
 
-    bool is_xl      = false;
-    bool is_flux    = false;
+    bool is_xl         = false;
+    bool is_flux         = false;
     bool is_refiner = false;
 
-#define found_family (is_xl || is_flux)
     for (auto& tensor_storage : tensor_storages) {
-        if (!found_family) {
-            if (tensor_storage.name.find("model.diffusion_model.double_blocks.") != std::string::npos) {
-                is_flux = true;
-                if (input_block_checked) {
-                    break;
-                }
+        if (tensor_storage.name.find("model.diffusion_model.double_blocks.") != std::string::npos) {
+            is_flux = true;
+            if (input_block_checked) {
+                break;
             }
-            if (tensor_storage.name.find("model.diffusion_model.joint_blocks.") != std::string::npos) {
-                return VERSION_SD3;
+        }
+        if (tensor_storage.name.find("model.diffusion_model.joint_blocks.") != std::string::npos) {
+            return VERSION_SD3;
+        }
+        if (tensor_storage.name.find("conditioner.embedders.1") != std::string::npos || tensor_storage.name.find("cond_stage_model.1") != std::string::npos) {
+            is_xl = true;
+            if (input_block_checked) {
+                break;
             }
-            if (tensor_storage.name.find("conditioner.embedders.1") != std::string::npos || tensor_storage.name.find("cond_stage_model.1") != std::string::npos) {
-                is_xl = true;
-                if (input_block_checked) {
-                    break;
-                }
-            }
-            if (tensor_storage.name.find("model.diffusion_model.output_blocks.11.0.") != std::string::npos) {
-                is_refiner = true;
-            }
-            if (tensor_storage.name.find("model.diffusion_model.input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
-                return VERSION_SVD;
-            }
+        }
+        if (tensor_storage.name.find("model.diffusion_model.output_blocks.11.0.") != std::string::npos) {
+            is_refiner = true;
+        }
+        if (tensor_storage.name.find("model.diffusion_model.input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
+            return VERSION_SVD;
         }
         if (tensor_storage.name == "cond_stage_model.transformer.text_model.embeddings.token_embedding.weight" ||
             tensor_storage.name == "cond_stage_model.model.token_embedding.weight" ||
@@ -1634,41 +1631,40 @@ SDVersion ModelLoader::get_sd_version() {
         if (tensor_storage.name == "model.diffusion_model.input_blocks.0.0.weight" || tensor_storage.name == "model.diffusion_model.img_in.weight") {
             input_block_weight  = tensor_storage;
             input_block_checked = true;
-            if (found_family) {
-                break;
-            }
         }
-    }
-    bool is_inpaint = input_block_weight.ne[2] == 9;
-    if (is_xl) {
-        if (is_refiner) {
-            return VERSION_SDXL_REFINER;
-        }
-        if (is_inpaint) {
-            return VERSION_SDXL_INPAINT;
-        }
-        return VERSION_SDXL;
     }
 
     if (is_flux) {
-        is_inpaint = input_block_weight.ne[0] == 384;
-        if (is_inpaint) {
+        if (input_block_weight.ne[0] == 384) {
             return VERSION_FLUX_FILL;
         }
         return VERSION_FLUX;
     }
 
+    if (is_xl) {
+        if (is_refiner) {
+            return VERSION_SDXL_REFINER;
+        }
+        if (input_block_weight.ne[2] == 9) {
+            return VERSION_SDXL_INPAINT;
+        }
+        return VERSION_SDXL;
+    }
+
     if (token_embedding_weight.ne[0] == 768) {
-        if (is_inpaint) {
+        if (input_block_weight.ne[2] == 9) {
             return VERSION_SD1_INPAINT;
         }
         return VERSION_SD1;
-    } else if (token_embedding_weight.ne[0] == 1024) {
-        if (is_inpaint) {
+    }
+
+    if (token_embedding_weight.ne[0] == 1024) {
+        if (input_block_weight.ne[2] == 9) {
             return VERSION_SD2_INPAINT;
         }
         return VERSION_SD2;
     }
+
     return VERSION_COUNT;
 }
 
