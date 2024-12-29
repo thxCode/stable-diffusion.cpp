@@ -1469,11 +1469,11 @@ SDVersion ModelLoader::get_sd_version() {
     TensorStorage token_embedding_weight, input_block_weight;
     bool input_block_checked = false;
 
-    bool has_multiple_encoders   = false;
-    bool is_unet = false;
+    bool has_multiple_encoders = false;
+    bool is_unet               = false;
 
-    bool is_xl = false;
-    bool is_flux = false;
+    bool is_xl      = false;
+    bool is_flux    = false;
     bool is_refiner = false;
 
 #define found_family (is_xl || is_flux)
@@ -1490,7 +1490,7 @@ SDVersion ModelLoader::get_sd_version() {
             }
             if (tensor_storage.name.find("model.diffusion_model.input_blocks.") != std::string::npos) {
                 is_unet = true;
-                if(has_multiple_encoders){
+                if (has_multiple_encoders) {
                     is_xl = true;
                     if (input_block_checked) {
                         break;
@@ -1499,7 +1499,7 @@ SDVersion ModelLoader::get_sd_version() {
             }
             if (tensor_storage.name.find("conditioner.embedders.1") != std::string::npos || tensor_storage.name.find("cond_stage_model.1") != std::string::npos) {
                 has_multiple_encoders = true;
-                if(is_unet){
+                if (is_unet) {
                     is_xl = true;
                     if (input_block_checked) {
                         break;
@@ -2035,6 +2035,15 @@ int64_t ModelLoader::get_params_mem_size(ggml_backend_t backend, ggml_type type)
     }
 
     return mem_size;
+}
+
+bool ModelLoader::has_prefix_tensors(const std::string& prefix) {
+    for (auto& tensor_storage : tensor_storages) {
+        if (tensor_storage.name.find(prefix) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool convert(const char* input_path, const char* vae_path, const char* output_path, sd_type_t output_type) {
