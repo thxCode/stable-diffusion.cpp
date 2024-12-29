@@ -175,14 +175,14 @@ protected:
     std::vector<int> attention_resolutions = {4, 2, 1};
     std::vector<int> channel_mult          = {1, 2, 4, 4};
     std::vector<int> transformer_depth     = {1, 1, 1, 1};
-    int time_embed_dim                     = 1280;  // model_channels*4
+    int time_embed_dim                     = 1280;  // model_channels*4, 1536 for VERSION_SDXL_REFINER
     int num_heads                          = 8;
     int num_head_channels                  = -1;   // channels // num_heads
-    int context_dim                        = 768;  // 1024 for VERSION_SD2, 2048 for VERSION_SDXL
+    int context_dim                        = 768;  // 1024 for VERSION_SD2, 2048 for VERSION_SDXL, 1280 for VERSION_SDXL_REFINER
 
 public:
-    int model_channels  = 320;
-    int adm_in_channels = 2816;  // only for VERSION_SDXL/SVD
+    int model_channels  = 320;   // 384 for VERSION_SDXL_REFINER
+    int adm_in_channels = 2816;  // 2816 for VERSION_SDXL/SVD, 2560 for VERSION_SDXL_REFINER
 
     UnetModelBlock(SDVersion version = VERSION_SD1, std::map<std::string, enum ggml_type>& tensor_types = empty_tensor_types, bool flash_attn = false)
         : version(version) {
@@ -197,6 +197,17 @@ public:
             transformer_depth     = {1, 2, 10};
             num_head_channels     = 64;
             num_heads             = -1;
+            if (version == VERSION_SDXL_REFINER) {
+                time_embed_dim        = 1536;
+                context_dim           = 1280;
+                model_channels        = 384;
+                adm_in_channels       = 2560;
+                attention_resolutions = {4, 2};
+                channel_mult          = {1, 2, 4, 4};
+                transformer_depth     = {4, 4, 4, 4};
+                num_head_channels     = 64;
+                num_heads             = -1;
+            }
         } else if (version == VERSION_SVD) {
             in_channels       = 8;
             out_channels      = 4;

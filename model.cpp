@@ -1474,6 +1474,7 @@ SDVersion ModelLoader::get_sd_version() {
 
     bool is_xl = false;
     bool is_flux = false;
+    bool is_refiner = false;
 
 #define found_family (is_xl || is_flux)
     for (auto& tensor_storage : tensor_storages) {
@@ -1505,6 +1506,9 @@ SDVersion ModelLoader::get_sd_version() {
                     }
                 }
             }
+            if (tensor_storage.name.find("model.diffusion_model.output_blocks.11.0.") != std::string::npos) {
+                is_refiner = true;
+            }
             if (tensor_storage.name.find("model.diffusion_model.input_blocks.8.0.time_mixer.mix_factor") != std::string::npos) {
                 return VERSION_SVD;
             }
@@ -1528,6 +1532,9 @@ SDVersion ModelLoader::get_sd_version() {
     }
     bool is_inpaint = input_block_weight.ne[2] == 9;
     if (is_xl) {
+        if (is_refiner) {
+            return VERSION_SDXL_REFINER;
+        }
         if (is_inpaint) {
             return VERSION_SDXL_INPAINT;
         }

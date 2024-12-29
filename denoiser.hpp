@@ -170,12 +170,17 @@ struct AYSSchedule : SigmaSchedule {
 
         switch (version) {
             case VERSION_SD2: /* fallthrough */
+            case VERSION_SD2_INPAINT:
                 LOG_WARN("AYS not designed for SD2.X models");
+                return results;
             case VERSION_SD1:
+            case VERSION_SD1_INPAINT:
                 LOG_INFO("AYS using SD1.5 noise levels");
                 inputs = noise_levels[0];
                 break;
             case VERSION_SDXL:
+            case VERSION_SDXL_REFINER:
+            case VERSION_SDXL_INPAINT:
                 LOG_INFO("AYS using SDXL noise levels");
                 inputs = noise_levels[1];
                 break;
