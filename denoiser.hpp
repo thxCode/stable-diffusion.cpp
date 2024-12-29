@@ -1017,4 +1017,682 @@ static void sample_k_diffusion(sample_method_t method,
     }
 }
 
+class Sampler {
+public:
+    virtual void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) = 0;
+};
+
+class EULERASampler : public Sampler {
+private:
+    struct ggml_tensor* noise = nullptr;
+    struct ggml_tensor* d     = nullptr;
+
+public:
+    EULERASampler() = default;
+    ~EULERASampler() {
+        delete noise;
+        delete d;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (noise == nullptr) {
+            noise = ggml_dup_tensor(work_ctx, x);
+            d     = ggml_dup_tensor(work_ctx, x);
+        }
+
+        float sigma = sigmas[i];
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigma, i + 1);
+
+        // d = (x - denoised) / sigma
+        {
+            auto vec_d        = (float*)d->data;
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            for (int j = 0; j < ggml_nelements(d); j++) {
+                vec_d[j] = (vec_x[j] - vec_denoised[j]) / sigma;
+            }
+        }
+
+        // get_ancestral_step
+        float sigma_up   = std::min(sigmas[i + 1],
+                                    std::sqrt(sigmas[i + 1] * sigmas[i + 1] * (sigmas[i] * sigmas[i] - sigmas[i + 1] * sigmas[i + 1]) / (sigmas[i] * sigmas[i])));
+        float sigma_down = std::sqrt(sigmas[i + 1] * sigmas[i + 1] - sigma_up * sigma_up);
+
+        // Euler method
+        float dt = sigma_down - sigmas[i];
+        // x = x + d * dt
+        {
+            auto vec_d = (float*)d->data;
+            auto vec_x = (float*)x->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        }
+
+        if (sigmas[i + 1] > 0) {
+            // x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
+            ggml_tensor_set_f32_randn(noise, rng);
+            // noise = load_tensor_from_file(work_ctx, "./rand" + std::to_string(i+1) + ".bin");
+            {
+                auto vec_x     = (float*)x->data;
+                auto vec_noise = (float*)noise->data;
+
+                for (int j = 0; j < ggml_nelements(x); j++) {
+                    vec_x[j] = vec_x[j] + vec_noise[j] * sigma_up;
+                }
+            }
+        }
+    }
+};
+
+class EULERSampler : public Sampler {
+private:
+    struct ggml_tensor* d = nullptr;
+
+public:
+    EULERSampler() = default;
+    ~EULERSampler() {
+        delete d;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (d == nullptr) {
+            d = ggml_dup_tensor(work_ctx, x);
+        }
+
+        float sigma = sigmas[i];
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigma, i + 1);
+
+        // d = (x - denoised) / sigma
+        {
+            auto vec_d        = (float*)d->data;
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            for (int j = 0; j < ggml_nelements(d); j++) {
+                vec_d[j] = (vec_x[j] - vec_denoised[j]) / sigma;
+            }
+        }
+
+        float dt = sigmas[i + 1] - sigmas[i];
+        // x = x + d * dt
+        {
+            auto vec_d = (float*)d->data;
+            auto vec_x = (float*)x->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        }
+    }
+};
+
+class HEUNSampler : public Sampler {
+private:
+    struct ggml_tensor* d  = nullptr;
+    struct ggml_tensor* x2 = nullptr;
+
+public:
+    HEUNSampler() = default;
+    ~HEUNSampler() {
+        delete d;
+        delete x2;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (d == nullptr) {
+            d  = ggml_dup_tensor(work_ctx, x);
+            x2 = ggml_dup_tensor(work_ctx, x);
+        }
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigmas[i], -(i + 1));
+
+        // d = (x - denoised) / sigma
+        {
+            auto vec_d        = (float*)d->data;
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_d[j] = (vec_x[j] - vec_denoised[j]) / sigmas[i];
+            }
+        }
+
+        float dt = sigmas[i + 1] - sigmas[i];
+        if (sigmas[i + 1] == 0) {
+            // Euler step
+            // x = x + d * dt
+            auto vec_d = (float*)d->data;
+            auto vec_x = (float*)x->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        } else {
+            // Heun step
+            auto vec_d  = (float*)d->data;
+            auto vec_x  = (float*)x->data;
+            auto vec_x2 = (float*)x2->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x2[j] = vec_x[j] + vec_d[j] * dt;
+            }
+
+            ggml_tensor* x2_denoised = model(x2, sigmas[i + 1], i + 1);
+            auto vec_denoised        = (float*)x2_denoised->data;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                float d2 = (vec_x2[j] - vec_denoised[j]) / sigmas[i + 1];
+                vec_d[j] = (vec_d[j] + d2) / 2;
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        }
+    }
+};
+
+class DPM2Sampler : public Sampler {
+private:
+    struct ggml_tensor* d  = nullptr;
+    struct ggml_tensor* x2 = nullptr;
+
+public:
+    DPM2Sampler() = default;
+    ~DPM2Sampler() {
+        delete d;
+        delete x2;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (d == nullptr) {
+            d  = ggml_dup_tensor(work_ctx, x);
+            x2 = ggml_dup_tensor(work_ctx, x);
+        }
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigmas[i], i + 1);
+
+        // d = (x - denoised) / sigma
+        {
+            auto vec_d        = (float*)d->data;
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_d[j] = (vec_x[j] - vec_denoised[j]) / sigmas[i];
+            }
+        }
+
+        if (sigmas[i + 1] == 0) {
+            // Euler step
+            // x = x + d * dt
+            float dt   = sigmas[i + 1] - sigmas[i];
+            auto vec_d = (float*)d->data;
+            auto vec_x = (float*)x->data;
+
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        } else {
+            // DPM-Solver-2
+            float sigma_mid = exp(0.5f * (log(sigmas[i]) + log(sigmas[i + 1])));
+            float dt_1      = sigma_mid - sigmas[i];
+            float dt_2      = sigmas[i + 1] - sigmas[i];
+
+            auto vec_d  = (float*)d->data;
+            auto vec_x  = (float*)x->data;
+            auto vec_x2 = (float*)x2->data;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x2[j] = vec_x[j] + vec_d[j] * dt_1;
+            }
+
+            ggml_tensor* y_denoised = model(x2, sigma_mid, i + 1);
+            auto vec_denoised       = (float*)y_denoised->data;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                float d2 = (vec_x2[j] - vec_denoised[j]) / sigma_mid;
+                vec_x[j] = vec_x[j] + d2 * dt_2;
+            }
+        }
+    }
+};
+
+class DPMPP2SASampler : public Sampler {
+private:
+    struct ggml_tensor* noise = nullptr;
+    struct ggml_tensor* d     = nullptr;
+    struct ggml_tensor* x2    = nullptr;
+
+public:
+    DPMPP2SASampler() = default;
+    ~DPMPP2SASampler() {
+        delete noise;
+        delete d;
+        delete x2;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (noise == nullptr) {
+            noise = ggml_dup_tensor(work_ctx, x);
+            d     = ggml_dup_tensor(work_ctx, x);
+            x2    = ggml_dup_tensor(work_ctx, x);
+        }
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigmas[i], i + 1);
+
+        // get_ancestral_step
+        float sigma_up   = std::min(sigmas[i + 1],
+                                    std::sqrt(sigmas[i + 1] * sigmas[i + 1] * (sigmas[i] * sigmas[i] - sigmas[i + 1] * sigmas[i + 1]) / (sigmas[i] * sigmas[i])));
+        float sigma_down = std::sqrt(sigmas[i + 1] * sigmas[i + 1] - sigma_up * sigma_up);
+        auto t_fn        = [](float sigma) -> float { return -log(sigma); };
+        auto sigma_fn    = [](float t) -> float { return exp(-t); };
+
+        if (sigma_down == 0) {
+            // Euler step
+            auto vec_d        = (float*)d->data;
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            for (int j = 0; j < ggml_nelements(d); j++) {
+                vec_d[j] = (vec_x[j] - vec_denoised[j]) / sigmas[i];
+            }
+
+            // TODO: If sigma_down == 0, isn't this wrong?
+            // But
+            // https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py#L525
+            // has this exactly the same way.
+            float dt = sigma_down - sigmas[i];
+            for (int j = 0; j < ggml_nelements(d); j++) {
+                vec_x[j] = vec_x[j] + vec_d[j] * dt;
+            }
+        } else {
+            // DPM-Solver++(2S)
+            float t      = t_fn(sigmas[i]);
+            float t_next = t_fn(sigma_down);
+            float h      = t_next - t;
+            float s      = t + 0.5f * h;
+
+            auto vec_x        = (float*)x->data;
+            auto vec_x2       = (float*)x2->data;
+            auto vec_denoised = (float*)denoised->data;
+
+            // First half-step
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x2[j] = (sigma_fn(s) / sigma_fn(t)) * vec_x[j] - (exp(-h * 0.5f) - 1) * vec_denoised[j];
+            }
+
+            // Second half-step
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = (sigma_fn(t_next) / sigma_fn(t)) * vec_x[j] - (exp(-h) - 1) * vec_denoised[j];
+            }
+        }
+
+        // Noise addition
+        if (sigmas[i + 1] > 0) {
+            ggml_tensor_set_f32_randn(noise, rng);
+            {
+                auto vec_x     = (float*)x->data;
+                auto vec_noise = (float*)noise->data;
+
+                for (int j = 0; j < ggml_nelements(x); j++) {
+                    vec_x[j] = vec_x[j] + vec_noise[j] * sigma_up;
+                }
+            }
+        }
+    }
+};
+
+class DPMPP2MSampler : public Sampler {
+private:
+    struct ggml_tensor* old_denoised = nullptr;
+
+public:
+    DPMPP2MSampler() = default;
+    ~DPMPP2MSampler() {
+        delete old_denoised;
+    }
+
+    static float t_fn(float sigma) {
+        return -log(sigma);
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (old_denoised == nullptr) {
+            old_denoised = ggml_dup_tensor(work_ctx, x);
+        }
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigmas[i], i + 1);
+
+        float t               = t_fn(sigmas[i]);
+        float t_next          = t_fn(sigmas[i + 1]);
+        float h               = t_next - t;
+        float a               = sigmas[i + 1] / sigmas[i];
+        float b               = exp(-h) - 1.f;
+        auto vec_x            = (float*)x->data;
+        auto vec_denoised     = (float*)denoised->data;
+        auto vec_old_denoised = (float*)old_denoised->data;
+
+        if (i == 0 || sigmas[i + 1] == 0) {
+            // Simpler step for the edge cases
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = a * vec_x[j] - b * vec_denoised[j];
+            }
+        } else {
+            float h_last = t - t_fn(sigmas[i - 1]);
+            float r      = h_last / h;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                float denoised_d = (1.f + 1.f / (2.f * r)) * vec_denoised[j] - (1.f / (2.f * r)) * vec_old_denoised[j];
+                vec_x[j]         = a * vec_x[j] - b * denoised_d;
+            }
+        }
+
+        // old_denoised = denoised
+        for (int j = 0; j < ggml_nelements(x); j++) {
+            vec_old_denoised[j] = vec_denoised[j];
+        }
+    }
+};
+
+class DPMPP2Mv2Sampler : public Sampler {
+private:
+    struct ggml_tensor* old_denoised = nullptr;
+
+public:
+    DPMPP2Mv2Sampler() = default;
+    ~DPMPP2Mv2Sampler() {
+        delete old_denoised;
+    }
+
+    static float t_fn(float sigma) {
+        return -log(sigma);
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (old_denoised == nullptr) {
+            old_denoised = ggml_dup_tensor(work_ctx, x);
+        }
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigmas[i], i + 1);
+
+        float t               = t_fn(sigmas[i]);
+        float t_next          = t_fn(sigmas[i + 1]);
+        float h               = t_next - t;
+        float a               = sigmas[i + 1] / sigmas[i];
+        auto vec_x            = (float*)x->data;
+        auto vec_denoised     = (float*)denoised->data;
+        auto vec_old_denoised = (float*)old_denoised->data;
+
+        if (i == 0 || sigmas[i + 1] == 0) {
+            // Simpler step for the edge cases
+            float b = exp(-h) - 1.f;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = a * vec_x[j] - b * vec_denoised[j];
+            }
+        } else {
+            float h_last = t - t_fn(sigmas[i - 1]);
+            float h_min  = std::min(h_last, h);
+            float h_max  = std::max(h_last, h);
+            float r      = h_max / h_min;
+            float h_d    = (h_max + h_min) / 2.f;
+            float b      = exp(-h_d) - 1.f;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                float denoised_d = (1.f + 1.f / (2.f * r)) * vec_denoised[j] - (1.f / (2.f * r)) * vec_old_denoised[j];
+                vec_x[j]         = a * vec_x[j] - b * denoised_d;
+            }
+        }
+
+        // old_denoised = denoised
+        for (int j = 0; j < ggml_nelements(x); j++) {
+            vec_old_denoised[j] = vec_denoised[j];
+        }
+    }
+};
+
+class IPNDMSampler : public Sampler {
+private:
+    std::vector<ggml_tensor*> buffer_model = {};
+    struct ggml_tensor* x_next             = nullptr;
+
+public:
+    IPNDMSampler() = default;
+    ~IPNDMSampler() {
+        buffer_model.clear();
+        delete x_next;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (x_next == nullptr) {
+            x_next = x;
+        }
+
+        int max_order = 4;
+
+        float sigma      = sigmas[i];
+        float sigma_next = sigmas[i + 1];
+
+        ggml_tensor* x_cur = x_next;
+        auto vec_x_cur     = (float*)x_cur->data;
+        auto vec_x_next    = (float*)x_next->data;
+
+        // Denoising step
+        ggml_tensor* denoised = model(x_cur, sigma, i + 1);
+        auto vec_denoised     = (float*)denoised->data;
+
+        // d_cur = (x_cur - denoised) / sigma
+        struct ggml_tensor* d_cur = ggml_dup_tensor(work_ctx, x_cur);
+        auto vec_d_cur            = (float*)d_cur->data;
+        for (int j = 0; j < ggml_nelements(d_cur); j++) {
+            vec_d_cur[j] = (vec_x_cur[j] - vec_denoised[j]) / sigma;
+        }
+
+        int order = std::min(max_order, i + 1);
+
+        // Calculate vec_x_next based on the order
+        switch (order) {
+            case 1: {  // First Euler step
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x_next[j] = vec_x_cur[j] + (sigma_next - sigma) * vec_d_cur[j];
+                }
+                break;
+            }
+            case 2: {  // Use one history point
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x_next[j] = vec_x_cur[j] + (sigma_next - sigma) * (3 * vec_d_cur[j] - vec_d_prev1[j]) / 2;
+                }
+                break;
+            }
+            case 3: {  // Use two history points
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                auto vec_d_prev2 = (float*)buffer_model[buffer_model.size() - 2]->data;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x_next[j] = vec_x_cur[j] + (sigma_next - sigma) * (23 * vec_d_cur[j] - 16 * vec_d_prev1[j] + 5 * vec_d_prev2[j]) / 12;
+                }
+                break;
+            }
+            case 4: {  // Use three history points
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                auto vec_d_prev2 = (float*)buffer_model[buffer_model.size() - 2]->data;
+                auto vec_d_prev3 = (float*)buffer_model[buffer_model.size() - 3]->data;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x_next[j] = vec_x_cur[j] + (sigma_next - sigma) * (55 * vec_d_cur[j] - 59 * vec_d_prev1[j] + 37 * vec_d_prev2[j] - 9 * vec_d_prev3[j]) / 24;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        // Manage buffer_model
+        if (buffer_model.size() == max_order - 1) {
+            // Shift elements to the left
+            for (int k = 0; k < max_order - 2; k++) {
+                buffer_model[k] = buffer_model[k + 1];
+            }
+            buffer_model.back() = d_cur;  // Replace the last element with d_cur
+        } else {
+            buffer_model.push_back(d_cur);
+        }
+    }
+};
+
+class IPNDMVSampler : public Sampler {
+private:
+    std::vector<ggml_tensor*> buffer_model = {};
+    struct ggml_tensor* x_next             = nullptr;
+
+public:
+    IPNDMVSampler() = default;
+    ~IPNDMVSampler() {
+        buffer_model.clear();
+        delete x_next;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (x_next == nullptr) {
+            x_next = x;
+        }
+
+        int max_order = 4;
+
+        float sigma  = sigmas[i];
+        float t_next = sigmas[i + 1];
+
+        // Denoising step
+        ggml_tensor* denoised = model(x, sigma, i + 1);
+        auto vec_denoised     = (float*)denoised->data;
+
+        // d_cur = (x - denoised) / sigma
+        struct ggml_tensor* d_cur = ggml_dup_tensor(work_ctx, x);
+        auto vec_d_cur            = (float*)d_cur->data;
+        auto vec_x                = (float*)x->data;
+        for (int j = 0; j < ggml_nelements(d_cur); j++) {
+            vec_d_cur[j] = (vec_x[j] - vec_denoised[j]) / sigma;
+        }
+
+        int order   = std::min(max_order, i + 1);
+        float h_n   = t_next - sigma;
+        float h_n_1 = (i > 0) ? (sigma - sigmas[i - 1]) : h_n;
+
+        switch (order) {
+            case 1: {  // First Euler step
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x[j] += vec_d_cur[j] * h_n;
+                }
+                break;
+            }
+            case 2: {
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x[j] += h_n * ((2 + (h_n / h_n_1)) * vec_d_cur[j] - (h_n / h_n_1) * vec_d_prev1[j]) / 2;
+                }
+                break;
+            }
+            case 3: {
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                auto vec_d_prev2 = (buffer_model.size() > 1) ? (float*)buffer_model[buffer_model.size() - 2]->data : vec_d_prev1;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x[j] += h_n * ((23 * vec_d_cur[j] - 16 * vec_d_prev1[j] + 5 * vec_d_prev2[j]) / 12);
+                }
+                break;
+            }
+            case 4: {
+                auto vec_d_prev1 = (float*)buffer_model.back()->data;
+                auto vec_d_prev2 = (buffer_model.size() > 1) ? (float*)buffer_model[buffer_model.size() - 2]->data : vec_d_prev1;
+                auto vec_d_prev3 = (buffer_model.size() > 2) ? (float*)buffer_model[buffer_model.size() - 3]->data : vec_d_prev2;
+                for (int j = 0; j < ggml_nelements(x_next); j++) {
+                    vec_x[j] += h_n * ((55 * vec_d_cur[j] - 59 * vec_d_prev1[j] + 37 * vec_d_prev2[j] - 9 * vec_d_prev3[j]) / 24);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        // Manage buffer_model
+        if (buffer_model.size() == max_order - 1) {
+            buffer_model.erase(buffer_model.begin());
+        }
+        buffer_model.push_back(d_cur);
+    }
+};
+
+class LCMSampler : public Sampler {
+private:
+    struct ggml_tensor* noise = nullptr;
+
+public:
+    LCMSampler() = default;
+    ~LCMSampler() {
+        delete noise;
+    }
+
+    void sample(denoise_cb_t model, ggml_context* work_ctx, ggml_tensor* x, std::vector<float> sigmas, std::shared_ptr<RNG> rng, int i) override {
+        if (noise == nullptr) {
+            noise = ggml_dup_tensor(work_ctx, x);
+        }
+
+        float sigma = sigmas[i];
+
+        // denoise
+        ggml_tensor* denoised = model(x, sigma, i + 1);
+
+        // x = denoised
+        {
+            auto vec_x        = (float*)x->data;
+            auto vec_denoised = (float*)denoised->data;
+            for (int j = 0; j < ggml_nelements(x); j++) {
+                vec_x[j] = vec_denoised[j];
+            }
+        }
+
+        if (sigmas[i + 1] > 0) {
+            // x += sigmas[i + 1] * noise_sampler(sigmas[i], sigmas[i + 1])
+            ggml_tensor_set_f32_randn(noise, rng);
+            {
+                auto vec_x     = (float*)x->data;
+                auto vec_noise = (float*)noise->data;
+                for (int j = 0; j < ggml_nelements(x); j++) {
+                    vec_x[j] = vec_x[j] + sigmas[i + 1] * vec_noise[j];
+                }
+            }
+        }
+    }
+};
+
+std::shared_ptr<Sampler> get_sampler(sample_method_t method) {
+    switch (method) {
+        case EULER_A:
+            return std::make_shared<EULERASampler>();
+        case EULER:
+            return std::make_shared<EULERSampler>();
+        case HEUN:
+            return std::make_shared<HEUNSampler>();
+        case DPM2:
+            return std::make_shared<DPM2Sampler>();
+        case DPMPP2S_A:
+            return std::make_shared<DPMPP2SASampler>();
+        case DPMPP2M:
+            return std::make_shared<DPMPP2MSampler>();
+        case DPMPP2Mv2:
+            return std::make_shared<DPMPP2Mv2Sampler>();
+        case IPNDM:
+            return std::make_shared<IPNDMSampler>();
+        case IPNDM_V:
+            return std::make_shared<IPNDMVSampler>();
+        case LCM:
+            return std::make_shared<LCMSampler>();
+        default:
+            LOG_ERROR("Attempting to sample with nonexisting sample method %i", method);
+            abort();
+    }
+}
+
 #endif  // __DENOISER_HPP__
