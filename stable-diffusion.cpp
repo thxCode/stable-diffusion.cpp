@@ -2208,3 +2208,10 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
 
     return result_images;
 }
+
+int sd_get_version(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == NULL) {
+        return VERSION_COUNT;
+    }
+    return sd_ctx->sd->version;
+}
