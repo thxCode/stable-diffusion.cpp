@@ -20,6 +20,8 @@
 #define STB_IMAGE_STATIC
 #include "stb_image.h"
 
+#include "latent-preview.h"
+
 // #define STB_IMAGE_WRITE_IMPLEMENTATION
 // #define STB_IMAGE_WRITE_STATIC
 // #include "stb_image_write.h"
@@ -224,6 +226,7 @@ public:
                         bool control_net_cpu,
                         bool vae_on_cpu,
                         bool diffusion_flash_attn,
+                        bool tae_preview_only,
                         int main_gpu) {
         use_tiny_autoencoder = taesd_path.size() > 0;
 #ifdef SD_USE_CUDA
@@ -436,7 +439,7 @@ public:
             diffusion_model->alloc_params_buffer();
             diffusion_model->get_param_tensors(tensors);
 
-            if (!use_tiny_autoencoder) {
+            if (!use_tiny_autoencoder || tae_preview_only) {
                 if (vae_on_cpu && !ggml_backend_is_cpu(backend)) {
                     LOG_INFO("VAE Autoencoder: Using CPU backend");
                     vae_backend = ggml_backend_cpu_init();
@@ -446,7 +449,8 @@ public:
                 first_stage_model = std::make_shared<AutoEncoderKL>(vae_backend, model_loader.tensor_storages_types, "first_stage_model", vae_decode_only, false, version);
                 first_stage_model->alloc_params_buffer();
                 first_stage_model->get_param_tensors(tensors, "first_stage_model");
-            } else {
+            }
+            if (use_tiny_autoencoder) {
                 tae_first_stage = std::make_shared<TinyAutoEncoder>(backend, model_loader.tensor_storages_types, "decoder.layers", vae_decode_only, version);
             }
             // first_stage_model->get_param_tensors(tensors, "first_stage_model.");
@@ -538,9 +542,10 @@ public:
             size_t clip_params_mem_size = cond_stage_model->get_params_buffer_size();
             size_t unet_params_mem_size = diffusion_model->get_params_buffer_size();
             size_t vae_params_mem_size  = 0;
-            if (!use_tiny_autoencoder) {
+            if (!use_tiny_autoencoder || tae_preview_only) {
                 vae_params_mem_size = first_stage_model->get_params_buffer_size();
-            } else {
+            }
+            if (use_tiny_autoencoder) {
                 if (!tae_first_stage->load_from_file(taesd_path)) {
                     return false;
                 }
@@ -680,6 +685,7 @@ public:
 
         LOG_DEBUG("finished loaded file");
         ggml_free(ctx);
+        use_tiny_autoencoder = use_tiny_autoencoder && !tae_preview_only;
         return true;
     }
 
@@ -865,6 +871,104 @@ public:
         return {c_crossattn, y, c_concat};
     }
 
+    void preview_image(ggml_context* work_ctx,
+                       int step,
+                       struct ggml_tensor* latents,
+                       sd_preview_policy_t preview_mode,
+                       ggml_tensor* result,
+                       std::function<void(int, sd_image_t)> step_callback) {
+        const uint32_t channel = 3;
+        uint32_t width         = latents->ne[0];
+        uint32_t height        = latents->ne[1];
+        uint32_t dim           = latents->ne[2];
+        if (preview_mode == SD_PREVIEW_PROJ) {
+            const float(*latent_rgb_proj)[channel];
+
+            if (dim == 16) {
+                // 16 channels VAE -> Flux or SD3
+
+                if (sd_version_is_sd3(version)) {
+                    latent_rgb_proj = sd3_latent_rgb_proj;
+                } else if (sd_version_is_flux(version)) {
+                    latent_rgb_proj = flux_latent_rgb_proj;
+                } else {
+                    LOG_WARN("No latent to RGB projection known for this model");
+                    // unknown model
+                    return;
+                }
+
+            } else if (dim == 4) {
+                // 4 channels VAE
+                if (version == VERSION_SDXL) {
+                    latent_rgb_proj = sdxl_latent_rgb_proj;
+                } else if (version == VERSION_SD1 || version == VERSION_SD2) {
+                    latent_rgb_proj = sd_latent_rgb_proj;
+                } else {
+                    // unknown model
+                    LOG_WARN("No latent to RGB projection known for this model");
+                    return;
+                }
+            } else {
+                LOG_WARN("No latent to RGB projection known for this model");
+                // unknown latent space
+                return;
+            }
+            uint8_t* data = (uint8_t*)malloc(width * height * channel * sizeof(uint8_t));
+
+            preview_latent_image(data, latents, latent_rgb_proj, width, height, dim);
+            sd_image_t image = {
+                width,
+                height,
+                channel,
+                data};
+            step_callback(step, image);
+            free(image.data);
+        } else {
+            if (preview_mode == SD_PREVIEW_VAE) {
+                ggml_tensor_scale(latents, 1.0f / scale_factor);
+                if (vae_tiling) {
+                    // split latent in 32x32 tiles and compute in several steps
+                    auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
+                        first_stage_model->compute(n_threads, in, true, &out);
+                    };
+                    sd_tiling(latents, result, 8, 32, 0.5f, on_tiling);
+                } else {
+                    first_stage_model->compute(n_threads, latents, true, &result);
+                }
+                first_stage_model->free_compute_buffer();
+                ggml_tensor_scale(latents, scale_factor);
+
+                ggml_tensor_scale_output(result);
+            } else if (preview_mode == SD_PREVIEW_TAE) {
+                if (tae_first_stage == nullptr) {
+                    LOG_WARN("TAE not found for preview");
+                    return;
+                }
+                if (vae_tiling) {
+                    // split latent in 64x64 tiles and compute in several steps
+                    auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
+                        tae_first_stage->compute(n_threads, in, true, &out);
+                    };
+                    sd_tiling(latents, result, 8, 64, 0.5f, on_tiling);
+                } else {
+                    tae_first_stage->compute(n_threads, latents, true, &result);
+                }
+                tae_first_stage->free_compute_buffer();
+            } else {
+                return;
+            }
+            ggml_tensor_clamp(result, 0.0f, 1.0f);
+            sd_image_t image = {
+                width * 8,
+                height * 8,
+                channel,
+                sd_tensor_to_image(result)};
+            ggml_tensor_scale(result, 0);
+            step_callback(step, image);
+            free(image.data);
+        }
+    }
+
     ggml_tensor* sample(ggml_context* work_ctx,
                         ggml_tensor* init_latent,
                         ggml_tensor* noise,
@@ -879,11 +983,14 @@ public:
                         const std::vector<float>& sigmas,
                         int start_merge_step,
                         SDCondition id_cond,
-                        std::vector<int> skip_layers = {},
-                        float slg_scale              = 0,
-                        float skip_layer_start       = 0.01,
-                        float skip_layer_end         = 0.2,
-                        ggml_tensor* noise_mask      = nullptr) {
+                        std::vector<int> skip_layers                       = {},
+                        float slg_scale                                    = 0,
+                        float skip_layer_start                             = 0.01,
+                        float skip_layer_end                               = 0.2,
+                        ggml_tensor* noise_mask                            = nullptr,
+                        sd_preview_policy_t preview_mode                   = SD_PREVIEW_NONE,
+                        int preview_interval                               = 1,
+                        std::function<void(int, sd_image_t)> step_callback = nullptr) {
         LOG_DEBUG("Sample");
         struct ggml_init_params params;
         size_t data_size = ggml_row_size(init_latent->type, init_latent->ne[0]);
@@ -925,6 +1032,15 @@ public:
             }
         }
         struct ggml_tensor* denoised = ggml_dup_tensor(work_ctx, x);
+
+        struct ggml_tensor* preview_tensor = NULL;
+        if (preview_mode != SD_PREVIEW_NONE && preview_mode != SD_PREVIEW_PROJ) {
+            preview_tensor = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32,
+                                                (denoised->ne[0] * 8),
+                                                (denoised->ne[1] * 8),
+                                                3,
+                                                denoised->ne[3]);
+        }
 
         auto denoise = [&](ggml_tensor* input, float sigma, int step) -> ggml_tensor* {
             if (step == 1) {
@@ -1067,6 +1183,11 @@ public:
                 }
             }
 
+            if (step_callback != nullptr) {
+                if (step % preview_interval == 0) {
+                    preview_image(work_ctx, step, denoised, preview_mode, preview_tensor, step_callback);
+                }
+            }
             return denoised;
         };
 
@@ -1210,6 +1331,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool keep_control_net_cpu,
                      bool keep_vae_on_cpu,
                      bool diffusion_flash_attn,
+                     bool tae_preview_only,
                      int main_gpu) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
@@ -1253,6 +1375,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     keep_control_net_cpu,
                                     keep_vae_on_cpu,
                                     diffusion_flash_attn,
+                                    tae_preview_only,
                                     main_gpu)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
@@ -1289,11 +1412,14 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
                            float style_ratio,
                            bool normalize_input,
                            std::string input_id_images_path,
-                           std::vector<int> skip_layers = {},
-                           float slg_scale              = 0,
-                           float skip_layer_start       = 0.01,
-                           float skip_layer_end         = 0.2,
-                           ggml_tensor* masked_image    = NULL) {
+                           std::vector<int> skip_layers                       = {},
+                           float slg_scale                                    = 0,
+                           float skip_layer_start                             = 0.01,
+                           float skip_layer_end                               = 0.2,
+                           ggml_tensor* masked_image                          = NULL,
+                           sd_preview_policy_t preview_mode                   = SD_PREVIEW_NONE,
+                           int preview_interval                               = 1,
+                           std::function<void(int, sd_image_t)> step_callback = nullptr) {
     if (seed < 0) {
         // Generally, when using the provided command line, the seed is always >0.
         // However, to prevent potential issues if 'stable-diffusion.cpp' is invoked as a library
@@ -1549,8 +1675,10 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
                                                      slg_scale,
                                                      skip_layer_start,
                                                      skip_layer_end,
-                                                     noise_mask);
-
+                                                     noise_mask,
+                                                     preview_mode,
+                                                     preview_interval,
+                                                     step_callback);
         // struct ggml_tensor* x_0 = load_tensor_from_file(ctx, "samples_ddim.bin");
         // print_ggml_tensor(x_0);
         int64_t sampling_end = ggml_time_ms();
@@ -1617,11 +1745,14 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                     float style_ratio,
                     bool normalize_input,
                     const char* input_id_images_path_c_str,
-                    int* skip_layers         = NULL,
-                    size_t skip_layers_count = 0,
-                    float slg_scale          = 0,
-                    float skip_layer_start   = 0.01,
-                    float skip_layer_end     = 0.2) {
+                    int* skip_layers                 = NULL,
+                    size_t skip_layers_count         = 0,
+                    float slg_scale                  = 0,
+                    float skip_layer_start           = 0.01,
+                    float skip_layer_end             = 0.2,
+                    sd_preview_policy_t preview_mode = SD_PREVIEW_NONE,
+                    int preview_interval             = 1,
+                    step_callback_t step_callback    = NULL) {
     std::vector<int> skip_layers_vec(skip_layers, skip_layers + skip_layers_count);
     LOG_DEBUG("txt2img %dx%d", width, height);
     if (sd_ctx == NULL) {
@@ -1638,6 +1769,9 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
     }
     if (sd_ctx->sd->stacked_id) {
         params.mem_size += static_cast<size_t>(10 * 1024 * 1024);  // 10 MB
+    }
+    if (preview_mode != SD_PREVIEW_NONE && preview_mode != SD_PREVIEW_PROJ) {
+        params.mem_size *= 2;
     }
     params.mem_size += width * height * 3 * sizeof(float);
     params.mem_size *= batch_count;
@@ -1698,7 +1832,11 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                                                skip_layers_vec,
                                                slg_scale,
                                                skip_layer_start,
-                                               skip_layer_end);
+                                               skip_layer_end,
+                                               NULL,
+                                               preview_mode,
+                                               preview_interval,
+                                               step_callback);
 
     size_t t1 = ggml_time_ms();
 
@@ -1727,11 +1865,14 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
                     float style_ratio,
                     bool normalize_input,
                     const char* input_id_images_path_c_str,
-                    int* skip_layers         = NULL,
-                    size_t skip_layers_count = 0,
-                    float slg_scale          = 0,
-                    float skip_layer_start   = 0.01,
-                    float skip_layer_end     = 0.2) {
+                    int* skip_layers                 = NULL,
+                    size_t skip_layers_count         = 0,
+                    float slg_scale                  = 0,
+                    float skip_layer_start           = 0.01,
+                    float skip_layer_end             = 0.2,
+                    sd_preview_policy_t preview_mode = SD_PREVIEW_NONE,
+                    int preview_interval             = 1,
+                    step_callback_t step_callback    = NULL) {
     std::vector<int> skip_layers_vec(skip_layers, skip_layers + skip_layers_count);
     LOG_DEBUG("img2img %dx%d", width, height);
     if (sd_ctx == NULL) {
@@ -1877,7 +2018,10 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
                                                slg_scale,
                                                skip_layer_start,
                                                skip_layer_end,
-                                               masked_image);
+                                               masked_image,
+                                               preview_mode,
+                                               preview_interval,
+                                               step_callback);
 
     size_t t2 = ggml_time_ms();
 
@@ -1978,7 +2122,15 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                                                  sample_method,
                                                  sigmas,
                                                  -1,
-                                                 SDCondition(NULL, NULL, NULL));
+                                                 SDCondition(NULL, NULL, NULL),
+                                                 {},
+                                                 0,
+                                                 0,
+                                                 0,
+                                                 NULL,
+                                                 (sd_preview_policy_t)0,
+                                                 1,
+                                                 NULL);
 
     int64_t t2 = ggml_time_ms();
     LOG_INFO("sampling completed, taking %.2fs", (t2 - t1) * 1.0f / 1000);
