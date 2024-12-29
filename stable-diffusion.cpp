@@ -144,7 +144,9 @@ public:
     ggml_backend_t control_net_backend = NULL;
     ggml_backend_t vae_backend         = NULL;
     ggml_type model_wtype              = GGML_TYPE_COUNT;
-    ggml_type conditioner_wtype        = GGML_TYPE_COUNT;
+    ggml_type clip_l_wtype             = GGML_TYPE_COUNT;
+    ggml_type clip_g_wtype             = GGML_TYPE_COUNT;
+    ggml_type t5xxl_wtype              = GGML_TYPE_COUNT;
     ggml_type diffusion_model_wtype    = GGML_TYPE_COUNT;
     ggml_type vae_wtype                = GGML_TYPE_COUNT;
 
@@ -337,9 +339,56 @@ public:
                 model_wtype = GGML_TYPE_F32;
                 LOG_WARN("can not get mode wtype frome weight, use f32");
             }
-            conditioner_wtype = model_loader.get_conditioner_wtype();
-            if (conditioner_wtype == GGML_TYPE_COUNT) {
-                conditioner_wtype = wtype;
+            switch (version) {
+                case VERSION_SVD:
+                case VERSION_SD1:
+                case VERSION_SD1_INPAINT:
+                case VERSION_SD2:
+                case VERSION_SD2_INPAINT:
+                case VERSION_SDXL:
+                case VERSION_SDXL_REFINER:
+                case VERSION_SDXL_INPAINT: {
+                    if (version != VERSION_SDXL_REFINER) {
+                        clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                        if (clip_l_wtype == GGML_TYPE_COUNT) {
+                            clip_l_wtype = wtype;
+                        }
+                    }
+                    if (sd_version_is_sdxl(version)) {
+                        clip_g_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.clip_g."});
+                        if (clip_g_wtype == GGML_TYPE_COUNT) {
+                            clip_g_wtype = wtype;
+                        }
+                    }
+                    break;
+                }
+                case VERSION_SD3: {
+                    clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                    if (clip_l_wtype == GGML_TYPE_COUNT) {
+                        clip_l_wtype = wtype;
+                    }
+                    clip_g_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.clip_g."});
+                    if (clip_g_wtype == GGML_TYPE_COUNT) {
+                        clip_g_wtype = wtype;
+                    }
+                    t5xxl_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.2.", "text_encoders.t5xxl."});
+                    if (t5xxl_wtype == GGML_TYPE_COUNT) {
+                        t5xxl_wtype = wtype;
+                    }
+                    break;
+                }
+                case VERSION_FLUX:
+                case VERSION_FLUX_FILL: {
+                    clip_l_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.transformer.", "text_encoders.clip_l."});
+                    if (clip_l_wtype == GGML_TYPE_COUNT) {
+                        clip_l_wtype = wtype;
+                    }
+                    t5xxl_wtype = model_loader.get_conditioner_wtype({"cond_stage_model.1.", "text_encoders.t5xxl."});
+                    if (t5xxl_wtype == GGML_TYPE_COUNT) {
+                        t5xxl_wtype = wtype;
+                    }
+                    break;
+                }
             }
             diffusion_model_wtype = model_loader.get_diffusion_model_wtype();
             if (diffusion_model_wtype == GGML_TYPE_COUNT) {
@@ -352,7 +401,9 @@ public:
             }
         } else {
             model_wtype           = wtype;
-            conditioner_wtype     = wtype;
+            clip_l_wtype          = wtype;
+            clip_g_wtype          = wtype;
+            t5xxl_wtype           = wtype;
             diffusion_model_wtype = wtype;
             vae_wtype             = wtype;
             model_loader.set_wtype_override(wtype);
@@ -363,22 +414,17 @@ public:
             model_loader.set_wtype_override(GGML_TYPE_F32, "vae.");
         }
 
-        LOG_INFO("Weight type:                 %s", model_wtype != SD_TYPE_COUNT ? ggml_type_name(model_wtype) : "??");
-        LOG_INFO("Conditioner weight type:     %s", conditioner_wtype != SD_TYPE_COUNT ? ggml_type_name(conditioner_wtype) : "??");
-        LOG_INFO("Diffusion model weight type: %s", diffusion_model_wtype != SD_TYPE_COUNT ? ggml_type_name(diffusion_model_wtype) : "??");
-        LOG_INFO("VAE weight type:             %s", vae_wtype != SD_TYPE_COUNT ? ggml_type_name(vae_wtype) : "??");
+        LOG_INFO("Weight type:                 %s", model_wtype != GGML_TYPE_COUNT ? ggml_type_name(model_wtype) : "??");
+        LOG_INFO("CLIP_L weight type:          %s", clip_l_wtype != GGML_TYPE_COUNT ? ggml_type_name(clip_l_wtype) : "??");
+        LOG_INFO("CLIP_G weight type:          %s", clip_g_wtype != GGML_TYPE_COUNT ? ggml_type_name(clip_g_wtype) : "??");
+        LOG_INFO("T5XXL weight type:           %s", t5xxl_wtype != GGML_TYPE_COUNT ? ggml_type_name(t5xxl_wtype) : "??");
+        LOG_INFO("Diffusion model weight type: %s", diffusion_model_wtype != GGML_TYPE_COUNT ? ggml_type_name(diffusion_model_wtype) : "??");
+        LOG_INFO("VAE weight type:             %s", vae_wtype != GGML_TYPE_COUNT ? ggml_type_name(vae_wtype) : "??");
 
         LOG_DEBUG("ggml tensor size = %d bytes", (int)sizeof(ggml_tensor));
 
         if (sd_version_is_sdxl(version)) {
             scale_factor = 0.13025f;
-            if (vae_path.size() == 0 && taesd_path.size() == 0) {
-                LOG_WARN(
-                    "!!!It looks like you are using SDXL model. "
-                    "If you find that the generated images are completely black, "
-                    "try specifying SDXL VAE FP16 Fix with the --vae parameter. "
-                    "You can find it here: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors");
-            }
         } else if (sd_version_is_sd3(version)) {
             scale_factor = 1.5305f;
         } else if (sd_version_is_flux(version)) {
