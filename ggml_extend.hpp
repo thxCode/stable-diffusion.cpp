@@ -43,6 +43,14 @@
 #include "ggml-sycl.h"
 #endif
 
+#ifdef SD_USE_CANN
+#include "ggml-cann.h"
+#endif
+
+#ifdef SD_USE_MUSA
+#include "ggml-musa.h"
+#endif
+
 #include "rng.hpp"
 #include "util.h"
 
@@ -708,7 +716,7 @@ __STATIC_INLINE__ struct ggml_tensor* ggml_nn_attention(struct ggml_context* ctx
                                                         struct ggml_tensor* k,
                                                         struct ggml_tensor* v,
                                                         bool mask = false) {
-#if defined(SD_USE_FLASH_ATTENTION) && !defined(SD_USE_CUDA) && !defined(SD_USE_METAL) && !defined(SD_USE_VULKAN) && !defined(SD_USE_SYCL)
+#if defined(SD_USE_FLASH_ATTENTION) && !defined(SD_USE_CUDA) && !defined(SD_USE_METAL) && !defined(SD_USE_VULKAN) && !defined(SD_USE_SYCL) && !defined(SD_USE_CANN) && !defined(SD_USE_MUSA)
     struct ggml_tensor* kqv = ggml_flash_attn(ctx, q, k, v, false);  // [N * n_head, n_token, d_head]
 #else
     float d_head           = (float)q->ne[0];

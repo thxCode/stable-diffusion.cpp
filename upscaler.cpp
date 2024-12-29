@@ -14,23 +14,48 @@ struct UpscalerGGML {
         : n_threads(n_threads) {
     }
 
-    bool load_from_file(const std::string& esrgan_path) {
+    bool load_from_file(const std::string& esrgan_path, int main_gpu) {
 #ifdef SD_USE_CUDA
+#ifdef SD_USE_HIP
+        LOG_DEBUG("Using HIP backend");
+#elif defined(SD_USE_MUSA)
+        LOG_DEBUG("Using MUSA backend");
+#else
         LOG_DEBUG("Using CUDA backend");
-        backend = ggml_backend_cuda_init(0);
+#endif
+        backend = ggml_backend_cuda_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("CUDA backend init failed");
+        }
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
         ggml_log_set(ggml_log_callback_default, nullptr);
         backend = ggml_backend_metal_init();
+        if (!backend) {
+            LOG_ERROR("Metal backend init failed");
+        }
 #endif
 #ifdef SD_USE_VULKAN
         LOG_DEBUG("Using Vulkan backend");
-        backend = ggml_backend_vk_init(0);
+        backend = ggml_backend_vk_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("Vulkan backend init failed");
+        }
 #endif
 #ifdef SD_USE_SYCL
         LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(0);
+        backend = ggml_backend_sycl_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("SYCL backend init failed");
+        }
+#endif
+#ifdef SD_USE_CANN
+        LOG_DEBUG("Using CANN backend");
+        backend = ggml_backend_cann_init(main_gpu);
+        if (!backend) {
+            LOG_ERROR("CANN backend init failed");
+        }
 #endif
         ModelLoader model_loader;
         if (!model_loader.init_from_file(esrgan_path)) {
@@ -41,6 +66,7 @@ struct UpscalerGGML {
             LOG_DEBUG("Using CPU backend");
             backend = ggml_backend_cpu_init();
         }
+
         LOG_INFO("Upscaler weight type: %s", ggml_type_name(model_data_type));
         esrgan_upscaler = std::make_shared<ESRGAN>(backend, model_loader.tensor_storages_types);
         if (!esrgan_upscaler->load_from_file(esrgan_path)) {
@@ -100,7 +126,8 @@ struct upscaler_ctx_t {
 };
 
 upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
-                                 int n_threads) {
+                                 int n_threads,
+                                 int main_gpu) {
     upscaler_ctx_t* upscaler_ctx = (upscaler_ctx_t*)malloc(sizeof(upscaler_ctx_t));
     if (upscaler_ctx == NULL) {
         return NULL;
@@ -112,7 +139,7 @@ upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
         return NULL;
     }
 
-    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path)) {
+    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path, main_gpu)) {
         delete upscaler_ctx->upscaler;
         upscaler_ctx->upscaler = NULL;
         free(upscaler_ctx);
