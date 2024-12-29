@@ -151,8 +151,9 @@ public:
     ggml_type vae_wtype                = GGML_TYPE_COUNT;
 
     SDVersion version;
-    bool vae_decode_only         = false;
-    bool free_params_immediately = false;
+    bool vae_decode_only          = false;
+    bool free_params_immediately  = false;
+    bool free_compute_immediately = true;
 
     rng_type_t rng_type = STD_DEFAULT_RNG;
     int n_threads       = -1;
@@ -186,11 +187,13 @@ public:
     StableDiffusionGGML(int n_threads,
                         bool vae_decode_only,
                         bool free_params_immediately,
+                        bool free_compute_immediately,
                         std::string lora_model_dir,
                         rng_type_t rng_type)
         : n_threads(n_threads),
           vae_decode_only(vae_decode_only),
           free_params_immediately(free_params_immediately),
+          free_compute_immediately(free_compute_immediately),
           lora_model_dir(lora_model_dir),
           rng_type(rng_type) {
     }
@@ -979,7 +982,9 @@ public:
                 } else {
                     first_stage_model->compute(n_threads, latents, true, &result);
                 }
-                first_stage_model->free_compute_buffer();
+                if (free_compute_immediately) {
+                    first_stage_model->free_compute_buffer();
+                }
                 ggml_tensor_scale(latents, scale_factor);
 
                 ggml_tensor_scale_output(result);
@@ -997,7 +1002,9 @@ public:
                 } else {
                     tae_first_stage->compute(n_threads, latents, true, &result);
                 }
-                tae_first_stage->free_compute_buffer();
+                if (free_compute_immediately) {
+                    tae_first_stage->free_compute_buffer();
+                }
             } else {
                 return;
             }
@@ -1259,7 +1266,9 @@ public:
             control_net->free_control_ctx();
             control_net->free_compute_buffer();
         }
-        diffusion_model->free_compute_buffer();
+        if (free_compute_immediately) {
+            diffusion_model->free_compute_buffer();
+        }
         return x;
     }
 
@@ -1329,7 +1338,9 @@ public:
             } else {
                 first_stage_model->compute(n_threads, x, decode, &result);
             }
-            first_stage_model->free_compute_buffer();
+            if (free_compute_immediately) {
+                first_stage_model->free_compute_buffer();
+            }
             if (decode) {
                 ggml_tensor_scale_output(result);
             }
@@ -1343,7 +1354,9 @@ public:
             } else {
                 tae_first_stage->compute(n_threads, x, decode, &result);
             }
-            tae_first_stage->free_compute_buffer();
+            if (free_compute_immediately) {
+                tae_first_stage->free_compute_buffer();
+            }
         }
 
         int64_t t1 = ggml_time_ms();
@@ -1383,6 +1396,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool vae_decode_only,
                      bool vae_tiling,
                      bool free_params_immediately,
+                     bool free_compute_immediately,
                      int n_threads,
                      enum sd_type_t wtype,
                      enum rng_type_t rng_type,
@@ -1412,6 +1426,7 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
     sd_ctx->sd = new StableDiffusionGGML(n_threads,
                                          vae_decode_only,
                                          free_params_immediately,
+                                         free_compute_immediately,
                                          lora_model_dir,
                                          rng_type);
     if (sd_ctx->sd == NULL) {
@@ -2970,6 +2985,9 @@ bool sd_sampling_stream_sample(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {
         return true;
     }
     stream->x = sd_ctx->sd->denoiser->inverse_noise_scaling(stream->sigmas[stream->sigmas.size() - 1], stream->x);
+    if (sd_ctx->sd->free_compute_immediately) {
+        sd_ctx->sd->diffusion_model->free_compute_buffer();
+    }
 
     size_t sampling_end = ggml_time_ms();
     LOG_INFO("sampling completed, taking %.2fs", (sampling_end - stream->sampling_start) * 1.0f / 1000);
