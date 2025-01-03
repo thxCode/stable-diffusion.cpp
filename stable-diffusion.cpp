@@ -2256,6 +2256,12 @@ void sd_lora_adapters_clear(sd_ctx_t* sd_ctx) {
     if (sd_ctx == NULL) {
         return;
     }
+
+    std::unordered_map<std::string, float> lora_state;
+    for (const auto& lora_adapter : sd_ctx->sd->curr_lora_state) {
+        lora_state[lora_adapter.first] = 0.0;
+    }
+    sd_ctx->sd->apply_loras(lora_state);
     sd_ctx->sd->curr_lora_state.clear();
 }
 
@@ -2263,8 +2269,6 @@ void sd_lora_adapters_apply(sd_ctx_t* sd_ctx, std::vector<sd_lora_adapter_contai
     if (sd_ctx == NULL) {
         return;
     }
-
-    sd_lora_adapters_clear(sd_ctx);
 
     std::unordered_map<std::string, float> lora_state;
     for (const sd_lora_adapter_container_t& lora_adapter : lora_adapters) {
