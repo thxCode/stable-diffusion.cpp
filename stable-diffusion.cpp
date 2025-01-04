@@ -179,6 +179,7 @@ public:
     std::string lora_model_dir;
     // lora_name => multiplier
     std::unordered_map<std::string, float> curr_lora_state;
+    std::unordered_map<std::string, std::shared_ptr<LoraModel>> curr_loras;
 
     std::shared_ptr<Denoiser> denoiser = std::make_shared<CompVisDenoiser>();
 
@@ -773,8 +774,6 @@ public:
     }
 
     void apply_lora(const std::string& lora_name, float multiplier) {
-        int64_t t0 = ggml_time_ms();
-
         std::string file_path;
         if (!lora_model_dir.empty()) {
             std::string st_file_path   = path_join(lora_model_dir, lora_name + ".safetensors");
@@ -793,26 +792,31 @@ public:
         } else {
             file_path = lora_name;
         }
-        LoraModel lora(backend, file_path);
-        if (!lora.load_from_file()) {
-            LOG_WARN("load lora tensors from %s failed", file_path.c_str());
+
+        if (curr_loras.find(lora_name) == curr_loras.end()) {
+            LOG_INFO("loading lora from '%s'", file_path.c_str());
+            int64_t t0                      = ggml_time_ms();
+            std::shared_ptr<LoraModel> lora = std::make_shared<LoraModel>(backend, file_path);
+            if (!lora->load_from_file()) {
+                LOG_WARN("load lora tensors from %s failed", file_path.c_str());
+                return;
+            }
+            int64_t t1 = ggml_time_ms();
+            LOG_INFO("lora '%s' loaded, taking %.2fs", lora_name.c_str(), (t1 - t0) * 1.0f / 1000);
+            curr_loras[lora_name] = lora;
+        } else if (curr_loras[lora_name]->multiplier == multiplier) {
             return;
         }
 
-        lora.multiplier = multiplier;
-        // TODO: send version?
-        lora.apply(tensors, version, n_threads);
-        lora.free_params_buffer();
-
+        int64_t t0                      = ggml_time_ms();
+        std::shared_ptr<LoraModel> lora = curr_loras[lora_name];
+        lora->multiplier                = multiplier;
+        lora->apply(tensors, version, n_threads);
         int64_t t1 = ggml_time_ms();
-
         LOG_INFO("lora '%s' applied, taking %.2fs", lora_name.c_str(), (t1 - t0) * 1.0f / 1000);
     }
 
     void apply_loras(const std::unordered_map<std::string, float>& lora_state) {
-        if (lora_state.size() > 0 && model_wtype != GGML_TYPE_F16 && model_wtype != GGML_TYPE_F32) {
-            LOG_WARN("In quantized models when applying LoRA, the images have poor quality.");
-        }
         std::unordered_map<std::string, float> lora_state_diff;
         for (auto& kv : lora_state) {
             const std::string& lora_name = kv.first;
@@ -820,16 +824,12 @@ public:
 
             if (curr_lora_state.find(lora_name) != curr_lora_state.end()) {
                 float curr_multiplier = curr_lora_state[lora_name];
-                float multiplier_diff = multiplier - curr_multiplier;
-                if (multiplier_diff != 0.f) {
-                    lora_state_diff[lora_name] = multiplier_diff;
-                }
-            } else {
+                multiplier -= curr_multiplier;
+            }
+            if (multiplier != 0.f) {
                 lora_state_diff[lora_name] = multiplier;
             }
         }
-
-        LOG_INFO("Attempting to apply %lu LoRAs", lora_state.size());
 
         for (auto& kv : lora_state_diff) {
             apply_lora(kv.first, kv.second);
