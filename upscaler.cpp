@@ -15,6 +15,7 @@ struct UpscalerGGML {
     }
 
     bool load_from_file(const std::string& esrgan_path, int main_gpu) {
+        ggml_log_set(ggml_log_callback_default, nullptr);
 #ifdef SD_USE_CUDA
 #ifdef SD_USE_HIP
         LOG_DEBUG("Using HIP backend");
@@ -30,7 +31,6 @@ struct UpscalerGGML {
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
-        ggml_log_set(ggml_log_callback_default, nullptr);
         backend = ggml_backend_metal_init();
         if (!backend) {
             LOG_ERROR("Metal backend init failed");

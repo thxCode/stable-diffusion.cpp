@@ -232,6 +232,8 @@ public:
                         bool tae_preview_only,
                         int main_gpu) {
         use_tiny_autoencoder = taesd_path.size() > 0;
+
+        ggml_log_set(ggml_log_callback_default, nullptr);
 #ifdef SD_USE_CUDA
 #ifdef SD_USE_HIP
         LOG_DEBUG("Using HIP backend");
@@ -247,7 +249,6 @@ public:
 #endif
 #ifdef SD_USE_METAL
         LOG_DEBUG("Using Metal backend");
-        ggml_log_set(ggml_log_callback_default, nullptr);
         backend = ggml_backend_metal_init();
         if (!backend) {
             LOG_ERROR("Metal backend init failed");
