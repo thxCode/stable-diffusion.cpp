@@ -84,6 +84,7 @@ static const char* sample_methods_argument_str[] = {
     "ipndm",
     "ipndm_v",
     "lcm",
+    "ddim_trailing",
 };
 
 sample_method_t sd_argument_to_sample_method(const char* str) {
