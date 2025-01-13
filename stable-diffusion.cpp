@@ -50,6 +50,7 @@ const char* sampling_methods_str[] = {
     "iPNDM",
     "iPNDM_v",
     "LCM",
+    "DDIM \"trailing\""
 };
 
 /*================================================== Helper Functions ================================================*/
