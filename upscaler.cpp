@@ -14,58 +14,88 @@ struct UpscalerGGML {
         : n_threads(n_threads) {
     }
 
-    bool load_from_file(const std::string& esrgan_path, int main_gpu) {
+    bool load_from_file(const std::string& esrgan_path, const std::vector<std::string>& rpc_servers, const float* tensor_split) {
         ggml_log_set(ggml_log_callback_default, nullptr);
-#ifdef SD_USE_CUDA
-#ifdef SD_USE_HIP
-        LOG_DEBUG("Using HIP backend");
-#elif defined(SD_USE_MUSA)
-        LOG_DEBUG("Using MUSA backend");
-#else
-        LOG_DEBUG("Using CUDA backend");
-#endif
-        backend = ggml_backend_cuda_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("CUDA backend init failed");
+
+        std::vector<ggml_backend_dev_t> devices;
+
+        if (!rpc_servers.empty()) {
+            ggml_backend_reg_t rpc_reg = ggml_backend_reg_by_name("RPC");
+            if (!rpc_reg) {
+                LOG_ERROR("failed to find RPC backend");
+                return false;
+            }
+
+            typedef ggml_backend_dev_t (*ggml_backend_rpc_add_device_t)(const char* endpoint);
+            ggml_backend_rpc_add_device_t ggml_backend_rpc_add_device_fn = (ggml_backend_rpc_add_device_t)ggml_backend_reg_get_proc_address(rpc_reg, "ggml_backend_rpc_add_device");
+            if (!ggml_backend_rpc_add_device_fn) {
+                LOG_ERROR("failed to find RPC device add function");
+                return false;
+            }
+
+            for (const std::string& server : rpc_servers) {
+                ggml_backend_dev_t dev = ggml_backend_rpc_add_device_fn(server.c_str());
+                if (dev) {
+                    devices.push_back(dev);
+                } else {
+                    LOG_ERROR("failed to add RPC device for server '%s'", server.c_str());
+                    return false;
+                }
+            }
         }
-#endif
-#ifdef SD_USE_METAL
-        LOG_DEBUG("Using Metal backend");
-        backend = ggml_backend_metal_init();
-        if (!backend) {
-            LOG_ERROR("Metal backend init failed");
+
+        // use all available devices
+        for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            switch (ggml_backend_dev_type(dev)) {
+                case GGML_BACKEND_DEVICE_TYPE_CPU:
+                case GGML_BACKEND_DEVICE_TYPE_ACCEL:
+                    // skip CPU backends since they are handled separately
+                    break;
+
+                case GGML_BACKEND_DEVICE_TYPE_GPU:
+                    devices.push_back(dev);
+                    break;
+            }
         }
-#endif
-#ifdef SD_USE_VULKAN
-        LOG_DEBUG("Using Vulkan backend");
-        backend = ggml_backend_vk_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("Vulkan backend init failed");
+
+        for (auto* dev : devices) {
+            size_t free, total;  // NOLINT
+            ggml_backend_dev_memory(dev, &free, &total);
+            LOG_INFO("using device %s (%s) - %zu MiB free", ggml_backend_dev_name(dev), ggml_backend_dev_description(dev), free / 1024 / 1024);
         }
-#endif
-#ifdef SD_USE_SYCL
-        LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("SYCL backend init failed");
+
+        // build GPU devices buffer list
+        std::vector<std::pair<ggml_backend_dev_t, ggml_backend_buffer_type_t>> gpu_devices;
+        {
+            const bool all_zero = tensor_split == nullptr || std::all_of(tensor_split, tensor_split + devices.size(), [](float x) { return x == 0.0f; });
+            // add GPU buffer types
+            for (size_t i = 0; i < devices.size(); ++i) {
+                if (!all_zero && tensor_split[i] <= 0.0f) {
+                    continue;
+                }
+                ggml_backend_device* dev = devices[i];
+                gpu_devices.emplace_back(dev, ggml_backend_dev_buffer_type(dev));
+            }
         }
-#endif
-#ifdef SD_USE_CANN
-        LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("CANN backend init failed");
+
+        // initialize the backend
+        if (gpu_devices.empty()) {
+            // no GPU devices available
+            backend = ggml_backend_cpu_init();
+        } else if (gpu_devices.size() < 4) {
+            // use the last GPU device
+            backend = ggml_backend_dev_init(gpu_devices[gpu_devices.size() - 1].first, nullptr);
+        } else {
+            // use the 4th GPU device
+            backend = ggml_backend_dev_init(gpu_devices[3].first, nullptr);
         }
-#endif
+
         ModelLoader model_loader;
         if (!model_loader.init_from_file(esrgan_path)) {
             LOG_ERROR("init model loader from file failed: '%s'", esrgan_path.c_str());
         }
         model_loader.set_wtype_override(model_data_type);
-        if (!backend) {
-            LOG_DEBUG("Using CPU backend");
-            backend = ggml_backend_cpu_init();
-        }
 
         LOG_INFO("Upscaler weight type: %s", ggml_type_name(model_data_type));
         esrgan_upscaler = std::make_shared<ESRGAN>(backend, model_loader.tensor_storages_types);
@@ -127,19 +157,32 @@ struct upscaler_ctx_t {
 
 upscaler_ctx_t* new_upscaler_ctx(const char* esrgan_path_c_str,
                                  int n_threads,
-                                 int main_gpu) {
+                                 const char* rpc_servers,
+                                 const float* tensor_splits) {
     upscaler_ctx_t* upscaler_ctx = (upscaler_ctx_t*)malloc(sizeof(upscaler_ctx_t));
     if (upscaler_ctx == NULL) {
         return NULL;
     }
     std::string esrgan_path(esrgan_path_c_str);
+    std::vector<std::string> rpc_servers_vec;
+    if (rpc_servers != nullptr && rpc_servers[0] != '\0') {
+        // split the servers set them into model->rpc_servers
+        std::string servers(rpc_servers);
+        size_t pos = 0;
+        while ((pos = servers.find(',')) != std::string::npos) {
+            std::string server = servers.substr(0, pos);
+            rpc_servers_vec.push_back(server);
+            servers.erase(0, pos + 1);
+        }
+        rpc_servers_vec.push_back(servers);
+    }
 
     upscaler_ctx->upscaler = new UpscalerGGML(n_threads);
     if (upscaler_ctx->upscaler == NULL) {
         return NULL;
     }
 
-    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path, main_gpu)) {
+    if (!upscaler_ctx->upscaler->load_from_file(esrgan_path, rpc_servers_vec, tensor_splits)) {
         delete upscaler_ctx->upscaler;
         upscaler_ctx->upscaler = NULL;
         free(upscaler_ctx);

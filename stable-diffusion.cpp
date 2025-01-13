@@ -50,8 +50,7 @@ const char* sampling_methods_str[] = {
     "iPNDM",
     "iPNDM_v",
     "LCM",
-    "DDIM \"trailing\""
-};
+    "DDIM \"trailing\""};
 
 /*================================================== Helper Functions ================================================*/
 
@@ -143,8 +142,8 @@ class StableDiffusionGGML {
 public:
     ggml_backend_t backend             = NULL;  // general backend
     ggml_backend_t clip_backend        = NULL;
-    ggml_backend_t control_net_backend = NULL;
     ggml_backend_t vae_backend         = NULL;
+    ggml_backend_t control_net_backend = NULL;
     ggml_type model_wtype              = GGML_TYPE_COUNT;
     ggml_type clip_l_wtype             = GGML_TYPE_COUNT;
     ggml_type clip_g_wtype             = GGML_TYPE_COUNT;
@@ -232,55 +231,157 @@ public:
                         bool vae_on_cpu,
                         bool diffusion_flash_attn,
                         bool tae_preview_only,
-                        int main_gpu) {
+                        const std::vector<std::string>& rpc_servers,
+                        const float* tensor_split) {
         use_tiny_autoencoder = taesd_path.size() > 0;
 
         ggml_log_set(ggml_log_callback_default, nullptr);
-#ifdef SD_USE_CUDA
-#ifdef SD_USE_HIP
-        LOG_DEBUG("Using HIP backend");
-#elif defined(SD_USE_MUSA)
-        LOG_DEBUG("Using MUSA backend");
-#else
-        LOG_DEBUG("Using CUDA backend");
-#endif
-        backend = ggml_backend_cuda_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("CUDA backend init failed");
-        }
-#endif
-#ifdef SD_USE_METAL
-        LOG_DEBUG("Using Metal backend");
-        backend = ggml_backend_metal_init();
-        if (!backend) {
-            LOG_ERROR("Metal backend init failed");
-        }
-#endif
-#ifdef SD_USE_VULKAN
-        LOG_DEBUG("Using Vulkan backend");
-        backend = ggml_backend_vk_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("Vulkan backend init failed");
-        }
-#endif
-#ifdef SD_USE_SYCL
-        LOG_DEBUG("Using SYCL backend");
-        backend = ggml_backend_sycl_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("SYCL backend init failed");
-        }
-#endif
-#ifdef SD_USE_CANN
-        LOG_DEBUG("Using CANN backend");
-        backend = ggml_backend_cann_init(main_gpu);
-        if (!backend) {
-            LOG_ERROR("CANN backend init failed");
-        }
-#endif
 
-        if (!backend) {
-            LOG_DEBUG("Using CPU backend");
+        std::vector<ggml_backend_dev_t> devices;
+
+        if (!rpc_servers.empty()) {
+            ggml_backend_reg_t rpc_reg = ggml_backend_reg_by_name("RPC");
+            if (!rpc_reg) {
+                LOG_ERROR("failed to find RPC backend");
+                return false;
+            }
+
+            typedef ggml_backend_dev_t (*ggml_backend_rpc_add_device_t)(const char* endpoint);
+            ggml_backend_rpc_add_device_t ggml_backend_rpc_add_device_fn = (ggml_backend_rpc_add_device_t)ggml_backend_reg_get_proc_address(rpc_reg, "ggml_backend_rpc_add_device");
+            if (!ggml_backend_rpc_add_device_fn) {
+                LOG_ERROR("failed to find RPC device add function");
+                return false;
+            }
+
+            for (const std::string& server : rpc_servers) {
+                ggml_backend_dev_t dev = ggml_backend_rpc_add_device_fn(server.c_str());
+                if (dev) {
+                    devices.push_back(dev);
+                } else {
+                    LOG_ERROR("failed to add RPC device for server '%s'", server.c_str());
+                    return false;
+                }
+            }
+        }
+
+        // use all available devices
+        for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            switch (ggml_backend_dev_type(dev)) {
+                case GGML_BACKEND_DEVICE_TYPE_CPU:
+                case GGML_BACKEND_DEVICE_TYPE_ACCEL:
+                    // skip CPU backends since they are handled separately
+                    break;
+
+                case GGML_BACKEND_DEVICE_TYPE_GPU:
+                    devices.push_back(dev);
+                    break;
+            }
+        }
+
+        for (auto* dev : devices) {
+            size_t free, total;  // NOLINT
+            ggml_backend_dev_memory(dev, &free, &total);
+            LOG_INFO("using device %s (%s) - %zu MiB free", ggml_backend_dev_name(dev), ggml_backend_dev_description(dev), free / 1024 / 1024);
+        }
+
+        // build GPU devices buffer list
+        std::vector<std::pair<ggml_backend_dev_t, ggml_backend_buffer_type_t>> gpu_devices;
+        {
+            const bool all_zero = tensor_split == nullptr || std::all_of(tensor_split, tensor_split + devices.size(), [](float x) { return x == 0.0f; });
+            // add GPU buffer types
+            for (size_t i = 0; i < devices.size(); ++i) {
+                if (!all_zero && tensor_split[i] <= 0.0f) {
+                    continue;
+                }
+                ggml_backend_device* dev = devices[i];
+                gpu_devices.emplace_back(dev, ggml_backend_dev_buffer_type(dev));
+            }
+        }
+
+        // initialize the backend
+        if (gpu_devices.empty()) {
+            // no GPU devices available
             backend = ggml_backend_cpu_init();
+        } else if (gpu_devices.size() < 3) {
+            // use the last GPU device
+            backend = ggml_backend_dev_init(gpu_devices[gpu_devices.size() - 1].first, nullptr);
+        } else {
+            // use the 3rd GPU device
+            backend = ggml_backend_dev_init(gpu_devices[2].first, nullptr);
+        }
+        switch (gpu_devices.size()) {
+            case 0: {
+                clip_backend        = backend;
+                vae_backend         = backend;
+                control_net_backend = backend;
+                break;
+            }
+            case 1: {
+                // device 0: clip, vae, control_net
+                clip_backend = backend;
+                if (clip_on_cpu) {
+                    LOG_INFO("CLIP: Using CPU backend");
+                    clip_backend = ggml_backend_cpu_init();
+                }
+                vae_backend = backend;
+                if (vae_on_cpu) {
+                    LOG_INFO("VAE Autoencoder: Using CPU backend");
+                    vae_backend = ggml_backend_cpu_init();
+                }
+                control_net_backend = backend;
+                if (control_net_cpu) {
+                    LOG_INFO("ControlNet: Using CPU backend");
+                    control_net_backend = ggml_backend_cpu_init();
+                }
+                break;
+            }
+            case 2: {
+                // device 0: clip, vae
+                // device 1: control_net
+                if (clip_on_cpu) {
+                    LOG_INFO("CLIP: Using CPU backend");
+                    clip_backend = ggml_backend_cpu_init();
+                } else {
+                    clip_backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
+                }
+                if (vae_on_cpu) {
+                    LOG_INFO("VAE Autoencoder: Using CPU backend");
+                    vae_backend = ggml_backend_cpu_init();
+                } else {
+                    vae_backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
+                }
+                if (control_net_cpu) {
+                    LOG_INFO("ControlNet: Using CPU backend");
+                    control_net_backend = ggml_backend_cpu_init();
+                } else {
+                    control_net_backend = ggml_backend_dev_init(gpu_devices[1].first, nullptr);
+                }
+                break;
+            }
+            default: {
+                // device 0: clip
+                // device 1: vae
+                // device 2: control_net
+                if (clip_on_cpu) {
+                    LOG_INFO("CLIP: Using CPU backend");
+                    clip_backend = ggml_backend_cpu_init();
+                } else {
+                    clip_backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
+                }
+                if (vae_on_cpu) {
+                    LOG_INFO("VAE Autoencoder: Using CPU backend");
+                    vae_backend = ggml_backend_cpu_init();
+                } else {
+                    vae_backend = ggml_backend_dev_init(gpu_devices[1].first, nullptr);
+                }
+                if (control_net_cpu) {
+                    LOG_INFO("ControlNet: Using CPU backend");
+                    control_net_backend = ggml_backend_cpu_init();
+                } else {
+                    control_net_backend = ggml_backend_dev_init(gpu_devices[2].first, nullptr);
+                }
+            }
         }
 
         ModelLoader model_loader;
@@ -441,7 +542,7 @@ public:
         auto cc_vae    = model_loader.has_prefix_tensors("first_stage_model.") && !model_loader.has_prefix_tensors("vae.");
 
         if (version == VERSION_SVD) {
-            clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(backend, model_loader.tensor_storages_types, cc_clip_l);
+            clip_vision = std::make_shared<FrozenCLIPVisionEmbedder>(clip_backend, model_loader.tensor_storages_types, cc_clip_l);
             clip_vision->alloc_params_buffer();
             clip_vision->get_param_tensors(tensors);
 
@@ -449,16 +550,11 @@ public:
             diffusion_model->alloc_params_buffer();
             diffusion_model->get_param_tensors(tensors);
 
-            first_stage_model = std::make_shared<AutoEncoderKL>(backend, model_loader.tensor_storages_types, vae_decode_only, true, version, cc_vae);
+            first_stage_model = std::make_shared<AutoEncoderKL>(vae_backend, model_loader.tensor_storages_types, vae_decode_only, true, version, cc_vae);
             LOG_DEBUG("vae_decode_only %d", vae_decode_only);
             first_stage_model->alloc_params_buffer();
             first_stage_model->get_param_tensors(tensors);
         } else {
-            clip_backend = backend;
-            if (clip_on_cpu && !ggml_backend_is_cpu(backend)) {
-                LOG_INFO("CLIP: Using CPU backend");
-                clip_backend = ggml_backend_cpu_init();
-            }
             if (diffusion_flash_attn) {
                 LOG_INFO("Using flash attention in the diffusion model");
             }
@@ -487,30 +583,17 @@ public:
             diffusion_model->get_param_tensors(tensors);
 
             if (!use_tiny_autoencoder || tae_preview_only) {
-                if (vae_on_cpu && !ggml_backend_is_cpu(backend)) {
-                    LOG_INFO("VAE Autoencoder: Using CPU backend");
-                    vae_backend = ggml_backend_cpu_init();
-                } else {
-                    vae_backend = backend;
-                }
                 first_stage_model = std::make_shared<AutoEncoderKL>(vae_backend, model_loader.tensor_storages_types, vae_decode_only, false, version, cc_vae);
                 first_stage_model->alloc_params_buffer();
                 first_stage_model->get_param_tensors(tensors);
             }
             if (use_tiny_autoencoder) {
-                tae_first_stage = std::make_shared<TinyAutoEncoder>(backend, model_loader.tensor_storages_types, vae_decode_only, version, cc_vae);
+                tae_first_stage = std::make_shared<TinyAutoEncoder>(vae_backend, model_loader.tensor_storages_types, vae_decode_only, version, cc_vae);
             }
             // first_stage_model->get_param_tensors(tensors, "first_stage_model.");
 
             if (control_net_path.size() > 0) {
-                ggml_backend_t controlnet_backend = NULL;
-                if (control_net_cpu && !ggml_backend_is_cpu(backend)) {
-                    LOG_DEBUG("ControlNet: Using CPU backend");
-                    controlnet_backend = ggml_backend_cpu_init();
-                } else {
-                    controlnet_backend = backend;
-                }
-                control_net = std::make_shared<ControlNet>(controlnet_backend, model_loader.tensor_storages_types, version);
+                control_net = std::make_shared<ControlNet>(control_net_backend, model_loader.tensor_storages_types, version);
             }
 
             if (id_embeddings_path.find("v2") != std::string::npos) {
@@ -1418,7 +1501,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool keep_vae_on_cpu,
                      bool diffusion_flash_attn,
                      bool tae_preview_only,
-                     int main_gpu) {
+                     const char* rpc_servers,
+                     const float* tensor_splits) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
         return NULL;
@@ -1434,6 +1518,18 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
     std::string embd_path(embed_dir_c_str);
     std::string id_embd_path(id_embed_dir_c_str);
     std::string lora_model_dir(lora_model_dir_c_str);
+    std::vector<std::string> rpc_servers_vec;
+    if (rpc_servers != nullptr && rpc_servers[0] != '\0') {
+        // split the servers set them into model->rpc_servers
+        std::string servers(rpc_servers);
+        size_t pos = 0;
+        while ((pos = servers.find(',')) != std::string::npos) {
+            std::string server = servers.substr(0, pos);
+            rpc_servers_vec.push_back(server);
+            servers.erase(0, pos + 1);
+        }
+        rpc_servers_vec.push_back(servers);
+    }
 
     sd_ctx->sd = new StableDiffusionGGML(n_threads,
                                          vae_decode_only,
@@ -1463,7 +1559,8 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     keep_vae_on_cpu,
                                     diffusion_flash_attn,
                                     tae_preview_only,
-                                    main_gpu)) {
+                                    rpc_servers_vec,
+                                    tensor_splits)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
         free(sd_ctx);
