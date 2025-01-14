@@ -255,12 +255,13 @@ struct TinyAutoEncoder : public GGMLRunner {
                  struct ggml_tensor* z,
                  bool decode_graph,
                  struct ggml_tensor** output,
+                 bool free_compute_immediately = false,
                  struct ggml_context* output_ctx = NULL) {
         auto get_graph = [&]() -> struct ggml_cgraph* {
             return build_graph(z, decode_graph);
         };
 
-        GGMLRunner::compute(get_graph, n_threads, false, output, output_ctx);
+        GGMLRunner::compute(get_graph, n_threads, free_compute_immediately, output, output_ctx);
     }
 };
 

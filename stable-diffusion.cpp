@@ -51,8 +51,7 @@ const char* sampling_methods_str[] = {
     "iPNDM_v",
     "LCM",
     "DDIM \"trailing\"",
-    "TCD"
-};
+    "TCD"};
 
 /*================================================== Helper Functions ================================================*/
 
@@ -1429,14 +1428,11 @@ public:
             if (vae_tiling) {
                 // split latent in 32x32 tiles and compute in several steps
                 auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
-                    first_stage_model->compute(n_threads, in, decode, &out);
+                    first_stage_model->compute(n_threads, in, decode, &out, free_compute_immediately);
                 };
                 sd_tiling(x, result, 8, 32, 0.5f, on_tiling, decode);
             } else {
-                first_stage_model->compute(n_threads, x, decode, &result);
-            }
-            if (free_compute_immediately) {
-                first_stage_model->free_compute_buffer();
+                first_stage_model->compute(n_threads, x, decode, &result, free_compute_immediately);
             }
             if (decode) {
                 ggml_tensor_scale_output(result);
@@ -1445,14 +1441,11 @@ public:
             if (vae_tiling) {
                 // split latent in 64x64 tiles and compute in several steps
                 auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
-                    tae_first_stage->compute(n_threads, in, decode, &out);
+                    tae_first_stage->compute(n_threads, in, decode, &out, free_compute_immediately);
                 };
                 sd_tiling(x, result, 8, 64, 0.5f, on_tiling, decode);
             } else {
-                tae_first_stage->compute(n_threads, x, decode, &result);
-            }
-            if (free_compute_immediately) {
-                tae_first_stage->free_compute_buffer();
+                tae_first_stage->compute(n_threads, x, decode, &result, free_compute_immediately);
             }
         }
 
@@ -2423,6 +2416,7 @@ struct sd_sampling_stream_t {
     float skip_layer_end;
     size_t sampling_start;
     int sampled_steps;
+    ggml_tensor* preview;
 };
 
 sd_sampling_stream_t* get_sampling_stream(sd_ctx_t* sd_ctx,
@@ -2685,8 +2679,16 @@ sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
     auto rng = sd_ctx->sd->get_rng(seed);
 
     struct ggml_init_params params{};
-    params.mem_size = static_cast<size_t>(5 * 10 * 1024 * 1024);  // 50 MB
-    params.mem_size += width * height * 3 * sizeof(float) * 3;
+    params.mem_size = static_cast<size_t>(128 * 1024 * 1024);  // 128 MB
+    int z_channels  = 4;
+    if (sd_version_is_dit(sd_ctx->sd->version)) {
+        z_channels = 16;
+    }
+    if (!sd_ctx->sd->use_tiny_autoencoder) {
+        params.mem_size += width * height * 3 * sizeof(float) * z_channels;
+    } else {
+        params.mem_size += (width / 8) * (height / 8) * 3 * sizeof(float) * z_channels;
+    }
     params.mem_buffer = nullptr;
     params.no_alloc   = false;
 
@@ -2777,8 +2779,16 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
     auto rng = sd_ctx->sd->get_rng(seed);
 
     struct ggml_init_params params{};
-    params.mem_size = static_cast<size_t>(5 * 10 * 1024 * 1024);  // 50 MB
-    params.mem_size += width * height * 3 * sizeof(float) * 3;
+    params.mem_size = static_cast<size_t>(128 * 1024 * 1024);  // 128 MB
+    int z_channels  = 4;
+    if (sd_version_is_dit(sd_ctx->sd->version)) {
+        z_channels = 16;
+    }
+    if (!sd_ctx->sd->use_tiny_autoencoder) {
+        params.mem_size += width * height * 3 * sizeof(float) * z_channels;
+    } else {
+        params.mem_size += (width / 8) * (height / 8) * 3 * sizeof(float) * z_channels;
+    }
     params.mem_buffer = nullptr;
     params.no_alloc   = false;
 
@@ -3127,12 +3137,12 @@ sd_image_t sd_sampling_stream_get_preview_image(sd_ctx_t* sd_ctx, sd_sampling_st
         return sd_image_t{};
     }
 
-    if (faster) {
-        const uint32_t channel = 3;
-        uint32_t width         = latents->ne[0];
-        uint32_t height        = latents->ne[1];
-        uint32_t dim           = latents->ne[2];
+    const uint32_t channel = 3;
+    uint32_t width         = latents->ne[0];
+    uint32_t height        = latents->ne[1];
+    uint32_t dim           = latents->ne[2];
 
+    if (faster) {
         const float(*latent_rgb_proj)[channel];
         switch (dim) {
             case 16: {  // 16 channels VAE -> Flux or SD3
@@ -3164,21 +3174,62 @@ sd_image_t sd_sampling_stream_get_preview_image(sd_ctx_t* sd_ctx, sd_sampling_st
 
         auto* data = (uint8_t*)malloc(width * height * channel * sizeof(uint8_t));
         preview_latent_image(data, latents, latent_rgb_proj, width, height, dim);
-        return sd_image_t{
+        auto img = sd_image_t{
             /*.width   =*/static_cast<uint32_t>(width),
             /*.height  =*/static_cast<uint32_t>(height),
             /*.channel =*/channel,
             /*.data    =*/data,
         };
+        return img;
     }
 
-    ggml_tensor* decoded_image = sd_ctx->sd->decode_first_stage(stream->work_ctx, latents);
-    return sd_image_t{
-        /*.width   =*/static_cast<uint32_t>(decoded_image->ne[0]),
-        /*.height  =*/static_cast<uint32_t>(decoded_image->ne[1]),
-        /*.channel =*/static_cast<uint32_t>(decoded_image->ne[2]),
-        /*.data    =*/sd_tensor_to_image(decoded_image),
+    width *= 8;
+    height *= 8;
+    bool use_tiny_autoencoder     = sd_ctx->sd->use_tiny_autoencoder;
+    float scale_factor            = sd_ctx->sd->scale_factor;
+    bool vae_tiling               = sd_ctx->sd->vae_tiling;
+    int n_threads                 = sd_ctx->sd->n_threads;
+    bool free_compute_immediately = sd_ctx->sd->free_compute_immediately;
+
+    if (stream->preview == nullptr) {
+        stream->preview = ggml_new_tensor_4d(stream->work_ctx, GGML_TYPE_F32, width, height, channel, dim);
+    }
+    int64_t t0 = ggml_time_ms();
+    if (!use_tiny_autoencoder) {
+        std::shared_ptr<AutoEncoderKL> first_stage_model = sd_ctx->sd->first_stage_model;
+        ggml_tensor_scale(latents, 1.0f / scale_factor);
+        if (vae_tiling) {
+            auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
+                first_stage_model->compute(n_threads, in, true, &out, free_compute_immediately);
+            };
+            sd_tiling(latents, stream->preview, 8, 32, 0.5f, on_tiling);
+        } else {
+            first_stage_model->compute(n_threads, latents, true, &stream->preview, free_compute_immediately);
+        }
+        ggml_tensor_scale(latents, scale_factor);
+        ggml_tensor_scale_output(stream->preview);
+    } else {
+        std::shared_ptr<TinyAutoEncoder> tae_first_stage = sd_ctx->sd->tae_first_stage;
+        if (vae_tiling) {
+            auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
+                tae_first_stage->compute(n_threads, in, true, &out, free_compute_immediately);
+            };
+            sd_tiling(latents, stream->preview, 8, 64, 0.5f, on_tiling);
+        } else {
+            tae_first_stage->compute(n_threads, latents, true, &stream->preview, free_compute_immediately);
+        }
+    }
+    int64_t t1 = ggml_time_ms();
+    LOG_DEBUG("computing vae [mode: DECODE] graph completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
+    ggml_tensor_clamp(stream->preview, 0.0f, 1.0f);
+    auto img = sd_image_t{
+        /*.width   =*/static_cast<uint32_t>(stream->preview->ne[0]),
+        /*.height  =*/static_cast<uint32_t>(stream->preview->ne[1]),
+        /*.channel =*/static_cast<uint32_t>(stream->preview->ne[2]),
+        /*.data    =*/sd_tensor_to_image(stream->preview),
     };
+    ggml_tensor_scale(stream->preview, 0);
+    return img;
 }
 
 sd_image_t sd_sampling_stream_get_image(sd_ctx_t* sd_ctx, sd_sampling_stream_t* stream) {

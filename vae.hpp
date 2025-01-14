@@ -564,13 +564,14 @@ struct AutoEncoderKL : public GGMLRunner {
                  struct ggml_tensor* z,
                  bool decode_graph,
                  struct ggml_tensor** output,
+                 bool free_compute_immediately = false,
                  struct ggml_context* output_ctx = NULL) {
         auto get_graph = [&]() -> struct ggml_cgraph* {
             return build_graph(z, decode_graph);
         };
         // ggml_set_f32(z, 0.5f);
         // print_ggml_tensor(z);
-        GGMLRunner::compute(get_graph, n_threads, true, output, output_ctx);
+        GGMLRunner::compute(get_graph, n_threads, free_compute_immediately, output, output_ctx);
     }
 
     void test() {
