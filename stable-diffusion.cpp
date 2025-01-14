@@ -304,10 +304,10 @@ public:
             // no GPU devices available
             backend = ggml_backend_cpu_init();
         } else if (gpu_devices.size() < 3) {
-            // use the last GPU device
+            // use the last GPU device: device 0, device 1
             backend = ggml_backend_dev_init(gpu_devices[gpu_devices.size() - 1].first, nullptr);
         } else {
-            // use the 3rd GPU device
+            // use the 3rd GPU device: device 2
             backend = ggml_backend_dev_init(gpu_devices[2].first, nullptr);
         }
         switch (gpu_devices.size()) {
@@ -337,8 +337,7 @@ public:
                 break;
             }
             case 2: {
-                // device 0: clip, vae
-                // device 1: control_net
+                // device 0: clip, vae, control_net
                 if (clip_on_cpu) {
                     LOG_INFO("CLIP: Using CPU backend");
                     clip_backend = ggml_backend_cpu_init();
@@ -355,14 +354,13 @@ public:
                     LOG_INFO("ControlNet: Using CPU backend");
                     control_net_backend = ggml_backend_cpu_init();
                 } else {
-                    control_net_backend = ggml_backend_dev_init(gpu_devices[1].first, nullptr);
+                    control_net_backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
                 }
                 break;
             }
             default: {
-                // device 0: clip
+                // device 0: clip, control_net
                 // device 1: vae
-                // device 2: control_net
                 if (clip_on_cpu) {
                     LOG_INFO("CLIP: Using CPU backend");
                     clip_backend = ggml_backend_cpu_init();
@@ -379,7 +377,7 @@ public:
                     LOG_INFO("ControlNet: Using CPU backend");
                     control_net_backend = ggml_backend_cpu_init();
                 } else {
-                    control_net_backend = ggml_backend_dev_init(gpu_devices[2].first, nullptr);
+                    control_net_backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
                 }
             }
         }
@@ -2676,7 +2674,7 @@ sd_sampling_stream_t* txt2img_stream(sd_ctx_t* sd_ctx,
     auto rng = sd_ctx->sd->get_rng(seed);
 
     struct ggml_init_params params{};
-    params.mem_size = static_cast<size_t>(5 * 10 * 1024 * 1024);  // 50 MB
+    params.mem_size = static_cast<size_t>(100 * 1024 * 1024);  // 100 MB
     params.mem_size += width * height * 3 * sizeof(float) * 3;
     params.mem_buffer = nullptr;
     params.no_alloc   = false;
@@ -2768,7 +2766,7 @@ sd_sampling_stream_t* img2img_stream(sd_ctx_t* sd_ctx,
     auto rng = sd_ctx->sd->get_rng(seed);
 
     struct ggml_init_params params{};
-    params.mem_size = static_cast<size_t>(5 * 10 * 1024 * 1024);  // 50 MB
+    params.mem_size = static_cast<size_t>(100 * 1024 * 1024);  // 100 MB
     params.mem_size += width * height * 3 * sizeof(float) * 3;
     params.mem_buffer = nullptr;
     params.no_alloc   = false;

@@ -83,12 +83,9 @@ struct UpscalerGGML {
         if (gpu_devices.empty()) {
             // no GPU devices available
             backend = ggml_backend_cpu_init();
-        } else if (gpu_devices.size() < 4) {
-            // use the last GPU device
-            backend = ggml_backend_dev_init(gpu_devices[gpu_devices.size() - 1].first, nullptr);
         } else {
-            // use the 4th GPU device
-            backend = ggml_backend_dev_init(gpu_devices[3].first, nullptr);
+            // use the first GPU device: device 0
+            backend = ggml_backend_dev_init(gpu_devices[0].first, nullptr);
         }
 
         ModelLoader model_loader;
