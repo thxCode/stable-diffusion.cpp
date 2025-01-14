@@ -1425,14 +1425,11 @@ public:
             if (vae_tiling) {
                 // split latent in 32x32 tiles and compute in several steps
                 auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
-                    first_stage_model->compute(n_threads, in, decode, &out);
+                    first_stage_model->compute(n_threads, in, decode, &out, free_compute_immediately);
                 };
                 sd_tiling(x, result, 8, 32, 0.5f, on_tiling, decode);
             } else {
-                first_stage_model->compute(n_threads, x, decode, &result);
-            }
-            if (free_compute_immediately) {
-                first_stage_model->free_compute_buffer();
+                first_stage_model->compute(n_threads, x, decode, &result, free_compute_immediately);
             }
             if (decode) {
                 ggml_tensor_scale_output(result);
@@ -1441,14 +1438,11 @@ public:
             if (vae_tiling) {
                 // split latent in 64x64 tiles and compute in several steps
                 auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
-                    tae_first_stage->compute(n_threads, in, decode, &out);
+                    tae_first_stage->compute(n_threads, in, decode, &out, free_compute_immediately);
                 };
                 sd_tiling(x, result, 8, 64, 0.5f, on_tiling, decode);
             } else {
-                tae_first_stage->compute(n_threads, x, decode, &result);
-            }
-            if (free_compute_immediately) {
-                tae_first_stage->free_compute_buffer();
+                tae_first_stage->compute(n_threads, x, decode, &result, free_compute_immediately);
             }
         }
 
