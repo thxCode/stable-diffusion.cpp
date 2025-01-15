@@ -50,6 +50,8 @@ const char* sampling_methods_str[] = {
     "iPNDM",
     "iPNDM_v",
     "LCM",
+    "DDIM \"trailing\"",
+    "TCD"
 };
 
 /*================================================== Helper Functions ================================================*/
@@ -83,6 +85,8 @@ static const char* sample_methods_argument_str[] = {
     "ipndm",
     "ipndm_v",
     "lcm",
+    "ddim_trailing",
+    "tcd",
 };
 
 sample_method_t sd_argument_to_sample_method(const char* str) {
@@ -1055,6 +1059,7 @@ public:
                         float min_cfg,
                         float cfg_scale,
                         float guidance,
+                        float eta,
                         sample_method_t method,
                         const std::vector<float>& sigmas,
                         int start_merge_step,
@@ -1268,7 +1273,7 @@ public:
             return denoised;
         };
 
-        sample_k_diffusion(method, denoise, work_ctx, x, sigmas, rng);
+        sample_k_diffusion(method, denoise, work_ctx, x, sigmas, rng, eta);
 
         x = denoiser->inverse_noise_scaling(sigmas[sigmas.size() - 1], x);
 
@@ -1486,6 +1491,7 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
                            int clip_skip,
                            float cfg_scale,
                            float guidance,
+                           float eta,
                            int width,
                            int height,
                            enum sample_method_t sample_method,
@@ -1756,6 +1762,7 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx,
                                                      cfg_scale,
                                                      cfg_scale,
                                                      guidance,
+                                                     eta,
                                                      sample_method,
                                                      sigmas,
                                                      start_merge_step,
@@ -1824,6 +1831,7 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                     int clip_skip,
                     float cfg_scale,
                     float guidance,
+                    float eta,
                     int width,
                     int height,
                     enum sample_method_t sample_method,
@@ -1908,6 +1916,7 @@ sd_image_t* txt2img(sd_ctx_t* sd_ctx,
                                                clip_skip,
                                                cfg_scale,
                                                guidance,
+                                               eta,
                                                width,
                                                height,
                                                sample_method,
@@ -1943,6 +1952,7 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
                     int clip_skip,
                     float cfg_scale,
                     float guidance,
+                    float eta,
                     int width,
                     int height,
                     sample_method_t sample_method,
@@ -2089,6 +2099,7 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
                                                clip_skip,
                                                cfg_scale,
                                                guidance,
+                                               eta,
                                                width,
                                                height,
                                                sample_method,
@@ -2200,6 +2211,7 @@ SD_API sd_image_t* img2vid(sd_ctx_t* sd_ctx,
                                                  0.f,
                                                  min_cfg,
                                                  cfg_scale,
+                                                 0.f,
                                                  0.f,
                                                  sample_method,
                                                  sigmas,
