@@ -233,38 +233,12 @@ public:
                         bool vae_on_cpu,
                         bool diffusion_flash_attn,
                         bool tae_preview_only,
-                        const std::vector<std::string>& rpc_servers,
                         const float* tensor_split) {
         use_tiny_autoencoder = taesd_path.size() > 0;
 
         ggml_log_set(ggml_log_callback_default, nullptr);
 
         std::vector<ggml_backend_dev_t> devices;
-
-        if (!rpc_servers.empty()) {
-            ggml_backend_reg_t rpc_reg = ggml_backend_reg_by_name("RPC");
-            if (!rpc_reg) {
-                LOG_ERROR("failed to find RPC backend");
-                return false;
-            }
-
-            typedef ggml_backend_dev_t (*ggml_backend_rpc_add_device_t)(const char* endpoint);
-            ggml_backend_rpc_add_device_t ggml_backend_rpc_add_device_fn = (ggml_backend_rpc_add_device_t)ggml_backend_reg_get_proc_address(rpc_reg, "ggml_backend_rpc_add_device");
-            if (!ggml_backend_rpc_add_device_fn) {
-                LOG_ERROR("failed to find RPC device add function");
-                return false;
-            }
-
-            for (const std::string& server : rpc_servers) {
-                ggml_backend_dev_t dev = ggml_backend_rpc_add_device_fn(server.c_str());
-                if (dev) {
-                    devices.push_back(dev);
-                } else {
-                    LOG_ERROR("failed to add RPC device for server '%s'", server.c_str());
-                    return false;
-                }
-            }
-        }
 
         // use all available devices
         for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
@@ -1496,7 +1470,6 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                      bool keep_vae_on_cpu,
                      bool diffusion_flash_attn,
                      bool tae_preview_only,
-                     const char* rpc_servers,
                      const float* tensor_splits) {
     sd_ctx_t* sd_ctx = (sd_ctx_t*)malloc(sizeof(sd_ctx_t));
     if (sd_ctx == NULL) {
@@ -1514,17 +1487,6 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
     std::string id_embd_path(id_embed_dir_c_str);
     std::string lora_model_dir(lora_model_dir_c_str);
     std::vector<std::string> rpc_servers_vec;
-    if (rpc_servers != nullptr && rpc_servers[0] != '\0') {
-        // split the servers set them into model->rpc_servers
-        std::string servers(rpc_servers);
-        size_t pos = 0;
-        while ((pos = servers.find(',')) != std::string::npos) {
-            std::string server = servers.substr(0, pos);
-            rpc_servers_vec.push_back(server);
-            servers.erase(0, pos + 1);
-        }
-        rpc_servers_vec.push_back(servers);
-    }
 
     sd_ctx->sd = new StableDiffusionGGML(n_threads,
                                          vae_decode_only,
@@ -1554,7 +1516,6 @@ sd_ctx_t* new_sd_ctx(const char* model_path_c_str,
                                     keep_vae_on_cpu,
                                     diffusion_flash_attn,
                                     tae_preview_only,
-                                    rpc_servers_vec,
                                     tensor_splits)) {
         delete sd_ctx->sd;
         sd_ctx->sd = NULL;
