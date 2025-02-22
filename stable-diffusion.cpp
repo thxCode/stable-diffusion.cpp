@@ -881,14 +881,19 @@ public:
         for (auto& kv : lora_state) {
             const std::string& lora_name = kv.first;
             float multiplier             = kv.second;
-
-            if (curr_lora_state.find(lora_name) != curr_lora_state.end()) {
-                float curr_multiplier = curr_lora_state[lora_name];
-                multiplier -= curr_multiplier;
-            }
-            if (multiplier != 0.f) {
-                lora_state_diff[lora_name] = multiplier;
-            }
+            lora_state_diff[lora_name] += multiplier;
+        }
+        for (auto& kv : curr_lora_state) {
+            const std::string& lora_name = kv.first;
+            float curr_multiplier        = kv.second;
+            lora_state_diff[lora_name] -= curr_multiplier;
+        }
+        
+        size_t rm = lora_state_diff.size() - lora_state.size();
+        if (rm != 0) {
+            LOG_INFO("Attempting to apply %lu LoRAs (removing %lu applied LoRAs)", lora_state.size(), rm);
+        } else {
+            LOG_INFO("Attempting to apply %lu LoRAs", lora_state.size());
         }
 
         for (auto& kv : lora_state_diff) {
