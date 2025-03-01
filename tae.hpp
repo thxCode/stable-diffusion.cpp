@@ -202,7 +202,7 @@ struct TinyAutoEncoder : public GGMLRunner {
                     SDVersion version = VERSION_SD1,
                     bool cc_vae       = false)
         : decode_only(decoder_only),
-          taesd(decode_only, version),
+          taesd(decoder_only, version),
           GGMLRunner(backend) {
         this->cc_vae = cc_vae;
         taesd.init(params_ctx, tensor_types, vae_prefix());
