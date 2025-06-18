@@ -18,22 +18,6 @@
 
 #include "stable-diffusion.h"
 
-#ifdef SD_USE_METAL
-#include "ggml-metal.h"
-#endif
-
-#ifdef SD_USE_VULKAN
-#include "ggml-vulkan.h"
-#endif
-
-#ifdef SD_USE_CANN
-#include "ggml-cann.h"
-#endif
-
-#ifdef SD_USE_MUSA
-#include "ggml-musa.h"
-#endif
-
 #define ST_HEADER_SIZE_LEN 8
 
 uint64_t read_u64(uint8_t* buffer) {

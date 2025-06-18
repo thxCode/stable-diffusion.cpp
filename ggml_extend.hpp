@@ -27,30 +27,6 @@
 
 #include "model.h"
 
-#ifdef SD_USE_CUDA
-#include "ggml-cuda.h"
-#endif
-
-#ifdef SD_USE_METAL
-#include "ggml-metal.h"
-#endif
-
-#ifdef SD_USE_VULKAN
-#include "ggml-vulkan.h"
-#endif
-
-#ifdef SD_USE_SYCL
-#include "ggml-sycl.h"
-#endif
-
-#ifdef SD_USE_CANN
-#include "ggml-cann.h"
-#endif
-
-#ifdef SD_USE_MUSA
-#include "ggml-musa.h"
-#endif
-
 #include "rng.hpp"
 #include "util.h"
 
@@ -140,7 +116,8 @@ __STATIC_INLINE__ struct ggml_tensor* ggml_kronecker(ggml_context* ctx, struct g
                                      a->ne[0] * b->ne[0],
                                      a->ne[1] * b->ne[1],
                                      a->ne[2] * b->ne[2],
-                                     a->ne[3] * b->ne[3]),
+                                     a->ne[3] * b->ne[3],
+                                     GGML_SCALE_MODE_NEAREST),
                     b);
 }
 
@@ -1330,8 +1307,15 @@ public:
         struct ggml_cgraph* gf = get_graph();
         GGML_ASSERT(ggml_gallocr_alloc_graph(compute_allocr, gf));
         cpy_data_to_backend_tensor();
-        if (ggml_backend_is_cpu(backend)) {
-            ggml_backend_cpu_set_n_threads(backend, n_threads);
+
+        auto * dev = ggml_backend_get_device(backend);
+        auto * reg = dev ? ggml_backend_dev_backend_reg(dev) : nullptr;
+        if (reg) {
+            auto ggml_backend_set_n_threads_fn =
+                (ggml_backend_set_n_threads_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_set_n_threads");
+            if (ggml_backend_set_n_threads_fn) {
+                ggml_backend_set_n_threads_fn(backend, n_threads);
+            }
         }
 
         ggml_backend_graph_compute(backend, gf);

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 project("stable-diffusion")
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 if (NOT TARGET ggml)
     cmake_policy(SET CMP0077 NEW)
 endif()
@@ -93,14 +94,19 @@ file(GLOB SD_LIB_SOURCES
 if(SD_BUILD_SHARED_LIBS)
     message("-- Build shared library")
     message(${SD_LIB_SOURCES})
-    set(BUILD_SHARED_LIBS OFF)
+    set(BUILD_SHARED_LIBS ON)
+    set(GGML_BACKEND_DL ON)
+    set(GGML_CPU_ALL_VARIANTS ON)
+    set(GGML_NATIVE OFF)
     add_library(${SD_LIB} SHARED ${SD_LIB_SOURCES})
     add_definitions(-DSD_BUILD_SHARED_LIB)
-    target_compile_definitions(${SD_LIB} PRIVATE -DSD_BUILD_DLL)
+    target_compile_definitions(${SD_LIB} PRIVATE SD_BUILD_DLL)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 else()
     message("-- Build static library")
     set(BUILD_SHARED_LIBS OFF)
+    set(GGML_BACKEND_DL OFF)
+    set(GGML_CPU_ALL_VARIANTS OFF)
     add_library(${SD_LIB} STATIC ${SD_LIB_SOURCES})
 endif()
 
@@ -121,6 +127,12 @@ if(SD_SYCL)
 endif()
 
 # see https://github.com/ggerganov/ggml/pull/682
+if (NOT DEFINED GGML_LLAMAFILE)
+    set(GGML_LLAMAFILE_DEFAULT ON)
+endif ()
+if (NOT DEFINED GGML_CUDA_GRAPHS)
+    set(GGML_CUDA_GRAPHS_DEFAULT ON)
+endif ()
 add_definitions(-DGGML_MAX_NAME=128)
 
 # deps
@@ -132,7 +144,7 @@ endif()
 add_subdirectory(thirdparty)
 
 target_link_libraries(${SD_LIB} PUBLIC ggml zip)
-target_include_directories(${SD_LIB} PUBLIC . thirdparty)
+target_include_directories(${SD_LIB} PUBLIC ${CMAKE_SOURCE_DIR} thirdparty)
 target_compile_features(${SD_LIB} PUBLIC cxx_std_11)
 
 
